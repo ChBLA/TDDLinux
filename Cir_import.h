@@ -185,6 +185,63 @@ std::map<int, gate> import_circuit(std::string  file_name) {
 	return gate_set;
 }
 
+std::map<int, gate> import_circuit_from_string(std::string circuit) {
+
+	qubits_num = 0;
+	gates_num = 0;
+
+	std::map<int, gate> gate_set;
+
+	std::istringstream infile(circuit);
+
+	std::string line;
+	std::getline(infile, line);
+	std::getline(infile, line);
+	//std::getline(infile, line);
+	std::getline(infile, line);
+	while (std::getline(infile, line))
+	{
+		gate temp_gate;
+
+		vector<std::string> g = split(line, " ");
+		smatch result;
+
+		temp_gate.name = g[0];
+
+		if (g[0] == "cx") {
+			regex pattern("q\\[(\\d+)\\], ?q\\[(\\d+)\\];");
+			if (regex_match(g[1], result, pattern))
+			{
+				if (stoi(result[1]) > qubits_num) {
+					qubits_num = stoi(result[1]);
+				}
+				if (stoi(result[2]) > qubits_num) {
+					qubits_num = stoi(result[2]);
+				}
+				temp_gate.qubits[0] = stoi(result[1]);
+				temp_gate.qubits[1] = stoi(result[2]);
+			}
+
+		}
+		else {
+			regex pattern("q\\[(\\d+)\\];");
+			if (regex_match(g[1], result, pattern))
+			{
+				if (stoi(result[1]) > qubits_num) {
+					qubits_num = stoi(result[1]);
+				}
+				temp_gate.qubits[0] = stoi(result[1]);
+			}
+		}
+
+		gate_set[gates_num] = temp_gate;
+		gates_num++;
+	}
+	
+	qubits_num += 1;
+	return gate_set;
+}
+
 std::map<int, std::vector<dd::Index>> get_index(std::map<int, gate> gate_set, std::map<std::string, int> var) {
 
 	std::map<int, std::vector<dd::Index>> Index_set;
@@ -965,6 +1022,24 @@ int get_qubits_num(std::string  file_name) {
 	return qubits_num;
 }
 
+int get_qubits_num_from_circuit(std::string circuit) {
+
+	auto ss = std::stringstream{circuit};
+
+    for (std::string line; std::getline(ss, line, '\n');)
+        if (line.find("qreg") != std::string::npos) {
+			smatch result;
+			string qubit_str = split(line, " ")[1];
+			regex pattern("qreq q\\[(\\d+)\\];");
+			if (regex_match(qubit_str, result, pattern))
+			{
+				return stoi(result[1]);
+			}	
+		}
+
+	return -1;
+}
+
 //计算gate_num
 int get_gates_num(std::string  file_name) {
 
@@ -985,6 +1060,17 @@ int get_gates_num(std::string  file_name) {
 	}
 	infile.close();
 	return gates_num;
+}
+
+int get_gates_num_from_circuit(std::string circuit) {
+	int totalLines = 0;
+
+	for (int i = 0; i < circuit.size(); i++) {
+		if (circuit[i] == ';') totalLines++;
+	}
+
+	return totalLines - 3;
+
 }
 
 //计算一个电路的tdd
@@ -1052,7 +1138,61 @@ int* Simulate_with_tdd(std::string path, std::string  file_name, std::unique_ptr
 }
 
 
-dd::TDD plannedContractionOnCircuit(std::string path, std::vector<std::tuple<int, int>> plan, std::string  file_name, std::unique_ptr<dd::Package<>>& dd) {
+dd::TDD plannedContractionOnCircuit(std::string circuit, std::vector<std::tuple<int, int>> plan, std::unique_ptr<dd::Package<>>& dd) {
+	// Load in circuit from file
+	std::map<int, gate> gate_set = import_circuit_from_string(circuit);
+
+	int* nodes = new int[2];
+	nodes[0] = 0;
+	nodes[1] = 0;
+
+
+	// Prepare TDD env (var order ...)
+	dd->varOrder = get_var_order();
+
+	std::map<int, std::vector<dd::Index>> Index_set = get_index(gate_set, dd->varOrder);
+	dd::TDD tdd = { dd::Edge<dd::mNode>::one ,{} };
+
+	if (release) {
+		dd->incRef(tdd.e);
+	}
+
+	int node_num_max = 0;
+
+	// Prepare Gate TDDs
+	std::vector<dd::TDD> gateTDDs(gate_set.size());
+	for (int i = 0; i < gateTDDs.size(); i++) {
+		gateTDDs[i] = gateToTDD(gate_set[i].name, Index_set[i], dd);
+	}
+
+	// Apply plan
+
+	for (int k = 0; k < plan.size(); k++) {
+		{
+			int leftIndex = std::get<0>(plan[k]);
+			int rightIndex = std::get<1>(plan[k]);
+
+			dd::TDD leftTDD = gateTDDs[leftIndex];
+			dd::TDD rightTDD = gateTDDs[rightIndex];
+
+			dd::TDD resTDD = applyTDDs(leftTDD, rightTDD, dd);
+
+			if (get_max_node) {
+				node_num_max = dd->size(resTDD.e);
+				if (node_num_max > nodes[0]) {
+					nodes[0] = node_num_max;
+				}
+			}
+
+			gateTDDs[rightIndex] = resTDD;
+
+		}
+	}
+
+	return gateTDDs[std::get<1>(plan[plan.size() - 1])];
+}
+
+dd::TDD plannedContractionOnCircuitFromFile(std::string path, std::vector<std::tuple<int, int>> plan, std::string file_name, std::unique_ptr<dd::Package<>>& dd) {
 	// Load in circuit from file
 	std::map<int, gate> gate_set = import_circuit(path + file_name);
 
@@ -1105,6 +1245,7 @@ dd::TDD plannedContractionOnCircuit(std::string path, std::vector<std::tuple<int
 
 	return gateTDDs[std::get<1>(plan[plan.size() - 1])];
 }
+
 
 
 std::vector<std::tuple<int, int>> getDefaultPlan(int gates) {

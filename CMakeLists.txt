@@ -1,7 +1,7 @@
 ﻿# CMakeList.txt : CMake project for TDDLinux, include source and define
 # project specific logic here.
 #
-option(MAKE_SO "make the so" ON)
+option(MAKE_SO "make the so" OFF)
 set(CMAKE_CXX_FLAGS "-Wall")
 
 cmake_minimum_required (VERSION 3.8)

@@ -11,6 +11,7 @@
 #include "dd/Export.hpp"
 #include "Cir_import.h"
 #include "dd/Tensor.hpp"
+#include "dd/Package.hpp"
 
 
 #include <xtensor/xio.hpp>
