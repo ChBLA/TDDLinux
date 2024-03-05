@@ -6,6 +6,9 @@
 #include <iostream>
 #include <chrono>
 #include <ctime>
+#include <sys/time.h>
+#include <stdio.h>
+#include <unistd.h>
 
 
 using namespace std;
@@ -232,7 +235,30 @@ int save_data() {
 	return 0;
 }
 
-char* contractCircuit(char* circuit_p, int qubits, char* plan_p) {
+// char* contractCircuit(char* circuit_p, int qubits, char* plan_p) {
+
+// 	std::string plan(plan_p);
+// 	std::string circuit(circuit_p);
+
+// 	std::vector<std::tuple<int, int>> actualPlan = get_actual_plan_from_string(plan);
+
+// 	int n = get_qubits_num_from_circuit(circuit);
+// 	int gates = get_gates_num_from_circuit(circuit);
+// 	auto dd = std::make_unique<dd::Package<>>(2 * gates);
+
+// 	auto start = std::chrono::system_clock::now();
+// 	dd::TDD res = plannedContractionOnCircuit(circuit, actualPlan, dd);
+// 	auto end = std::chrono::system_clock::now();
+
+// 	double contTime = (end-start).count();
+// 	bool resIsIdentity = dd->isTDDIdentity(res, false, n);
+
+// 	return (resIsIdentity + ";" + std::to_string(contTime)).data();
+// }
+
+const char* contractCircuit(char* circuit_p, int qubits, char* plan_p) {
+	struct timeval start, end;
+    long mtime, seconds, useconds;    
 
 	std::string plan(plan_p);
 	std::string circuit(circuit_p);
@@ -243,21 +269,35 @@ char* contractCircuit(char* circuit_p, int qubits, char* plan_p) {
 	int gates = get_gates_num_from_circuit(circuit);
 	auto dd = std::make_unique<dd::Package<>>(2 * gates);
 
-	auto start = std::chrono::system_clock::now();
+	gettimeofday(&start, NULL);
 	dd::TDD res = plannedContractionOnCircuit(circuit, actualPlan, dd);
-	auto end = std::chrono::system_clock::now();
+    gettimeofday(&end, NULL);
 
-	double contTime = (end-start).count();
 	bool resIsIdentity = dd->isTDDIdentity(res, false, n);
 
-	return (resIsIdentity + ";" + std::to_string(contTime)).data();
+	//return (resIsIdentity + ";" + std::to_string(contTime)).data();
+    seconds  = end.tv_sec  - start.tv_sec;
+    useconds = end.tv_usec - start.tv_usec;
+    mtime = ((seconds) * 1000 + useconds/1000.0) + 0.5;
+    printf("Elapsed time: %ld milliseconds\n", mtime);
+
+	return ((resIsIdentity ? "true" : "false") + std::string("; ") + std::to_string(mtime)).data();
 }
 
 
+
+   
+
+
+
+
 extern "C" {
-	char* pyContractCircuit(char* circuit_p, int qubits, char* plan_p) {
+	const char* pyContractCircuit(char* circuit_p, int qubits, char* plan_p) {
 		return contractCircuit(circuit_p, qubits, plan_p);
 	}
 
+	int testerFunc(int num) {
+		return num + 1;
+	}
 
 }

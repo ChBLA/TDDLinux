@@ -192,7 +192,7 @@ std::map<int, gate> import_circuit_from_string(std::string circuit) {
 
 	std::map<int, gate> gate_set;
 
-	std::istringstream infile(circuit);
+	std::stringstream infile(circuit);
 
 	std::string line;
 	std::getline(infile, line);
@@ -1190,9 +1190,13 @@ dd::TDD plannedContractionOnCircuit(std::string circuit, std::vector<std::tuple<
 	}
 
 	// Apply plan
-
+	int current_step = 1;
 	for (int k = 0; k < plan.size(); k++) {
 		{
+			if (((double) k) / ((double) plan.size()) * 10 > current_step) {
+				printf("Done with: %d of %ld\n", k, plan.size());
+				current_step++;
+			}
 			int leftIndex = std::get<0>(plan[k]);
 			int rightIndex = std::get<1>(plan[k]);
 
