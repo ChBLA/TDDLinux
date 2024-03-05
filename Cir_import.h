@@ -1073,6 +1073,30 @@ int get_gates_num_from_circuit(std::string circuit) {
 
 }
 
+std::vector<std::tuple<int, int>> get_actual_plan_from_string(string plan) {
+	std::vector<std::tuple<int, int>> res;
+
+	std::stringstream plan_stream(plan);
+	std::string entry;
+
+	while(std::getline(plan_stream, entry, ';')) {
+		string new_str = entry.substr(1, entry.size()-1);
+
+		std::stringstream entry_stream(new_str);
+		std::string int_str;
+		std::vector<int> members;
+
+		while (std::getline(entry_stream, int_str, ',')) {
+			members.push_back(stoi(int_str));
+		}
+
+		res.push_back({members[0], members[1]});
+		members.clear();
+	}
+
+	return res;
+}
+
 //计算一个电路的tdd
 int* Simulate_with_tdd(std::string path, std::string  file_name, std::unique_ptr<dd::Package<>>& dd) {
 

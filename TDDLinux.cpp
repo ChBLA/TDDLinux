@@ -89,6 +89,12 @@ int main() {
 
 }
 
+// int main() {
+// 	string circuit = "OPENQASM 2.0;\n include "qelib1.inc";\n qreg q[10];\n z q[6];\n h q[2];\n h q[7];\n z q[5];\n y q[6];\n y q[0];\n z q[0];\n h q[4];\n y q[1];\n x q[8];\n z q[6];\n s q[3];\n z q[7];\n s q[1];\n z q[6];\n s q[9];\n x q[1];\n z q[2];\n x q[9];\n h q[4];\n cx q[6],q[1];\n z q[7];\n y q[5];\n s q[9];\n z q[9];\n y q[9];\n h q[4];\n x q[9];\n x q[5];\n z q[8];\n x q[9];\n z q[4];\n s q[8];\n y q[7];\n cx q[9],q[3];\n cx q[9],q[1];\n s q[0];\n cx q[0],q[5];\n h q[2];\n h q[3];\n x q[5];\n z q[9];\n z q[1];\n s q[0];\n x q[4];\n s q[6];\n cx q[3],q[8];\n y q[5];\n s q[8];\n h q[6];\n z q[0];\n y q[9];\n x q[6];\n h q[7];\n x q[6];\n z q[7];\n s q[5];\n cx q[7],q[9];\n h q[7];\n x q[9];\n z q[2];\n cx q[6],q[4];\n s q[6];\n y q[1];\n z q[3];\n y q[5];\n x q[2];\n h q[2];\n s q[5];\n z q[0];\n x q[6];\n cx q[4],q[0];\n s q[5];\n cx q[2],q[4];\n z q[1];\n y q[0];\n x q[3];\n y q[2];\n z q[5];\n s q[6];\n s q[5];\n x q[4];\n y q[5];\n s q[4];\n s q[7];\n x q[4];\n y q[4];\n y q[3];\n z q[2];\n h q[1];\n s q[2];\n h q[6];\n s q[1];\n y q[1];\n cx q[4],q[9];\n cx q[9],q[6];\n cx q[4],q[1];\n x q[7];\n x q[5];\n z q[5];\n x q[7];\n h q[0];\n s q[4];\n x q[5];\n cx q[7],q[9];\n z q[7];\n cx q[0],q[6];\n y q[8];\n y q[8];\n cx q[8],q[1];\n y q[4];\n cx q[6],q[8];\n cx q[7],q[6];\n cx q[3],q[7];\n y q[6];\n h q[2];\n s q[5];\n x q[7];\n z q[0];\n y q[8];\n cx q[6],q[3];\n cx q[2],q[3];\n x q[9];\n h q[7];\n h q[4];\n z q[7];\n h q[5];\n x q[7];\n h q[8];\n y q[9];\n s q[7];\n x q[7];\n s q[9];\n s q[8];\n z q[9];\n x q[8];\n h q[7];\n h q[3];\n z q[8];\n h q[4];\n x q[3];\n h q[8];\n h q[5];\n x q[2];\n z q[6];\n cx q[5],q[0];\n h q[9];\n y q[3];\n z q[0];\n z q[9];\n cx q[0],q[8];\n s q[0];\n h q[4];\n cx q[4],q[5];\n x q[2];\n z q[8];\n z q[5];\n cx q[1],q[9];\n s q[8];\n cx q[7],q[1];\n z q[4];\n y q[7];\n s q[8];\n cx q[5],q[4];\n s q[8];\n z q[5];\n cx q[3],q[2];\n z q[9];\n x q[1];\n s q[1];\n x q[5];\n h q[0];\n s q[7];\n x q[8];\n cx q[6],q[0];\n y q[2];\n z q[7];\n x q[9];\n z q[0];\n y q[4];\n s q[7];\n z q[3];\n s q[8];\n x q[6];\n s q[1];\n s q[4];\n h q[2];\n h q[9];\n h q[9];\n s q[7];\n h q[0];\n cx q[8],q[2];\n cx q[1],q[8];\n h q[1];\n s q[7];\n y q[9];\n y q[7];\n z q[1];\n h q[8];\n h q[2];\n ";
+// 	string plan = 
+
+// }
+
 int main2() {
 
 	//qc::QuantumComputation qc1{};
@@ -226,20 +232,32 @@ int save_data() {
 	return 0;
 }
 
+char* contractCircuit(char* circuit_p, int qubits, char* plan_p) {
+
+	std::string plan(plan_p);
+	std::string circuit(circuit_p);
+
+	std::vector<std::tuple<int, int>> actualPlan = get_actual_plan_from_string(plan);
+
+	int n = get_qubits_num_from_circuit(circuit);
+	int gates = get_gates_num_from_circuit(circuit);
+	auto dd = std::make_unique<dd::Package<>>(2 * gates);
+
+	auto start = std::chrono::system_clock::now();
+	dd::TDD res = plannedContractionOnCircuit(circuit, actualPlan, dd);
+	auto end = std::chrono::system_clock::now();
+
+	double contTime = (end-start).count();
+	bool resIsIdentity = dd->isTDDIdentity(res, false, n);
+
+	return (resIsIdentity + ";" + std::to_string(contTime)).data();
+}
+
 
 extern "C" {
-	std::tuple<bool, float> contractCircuit(string circuit, int qubits, std::vector<std::tuple<int, int>> plan) {
-		int n = get_qubits_num_from_circuit(circuit);
-		int gates = get_gates_num_from_circuit(circuit);
-		auto dd = std::make_unique<dd::Package<>>(2 * gates);
-
-		auto start = std::chrono::system_clock::now();
-		dd::TDD res = plannedContractionOnCircuit(circuit, plan, dd);
-		auto end = std::chrono::system_clock::now();
-
-		double contTime = (end-start).count();
-		bool resIsIdentity = dd->isTDDIdentity(res, false, n);
-
-		return {resIsIdentity, contTime};
+	char* pyContractCircuit(char* circuit_p, int qubits, char* plan_p) {
+		return contractCircuit(circuit_p, qubits, plan_p);
 	}
+
+
 }
