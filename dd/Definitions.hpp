@@ -23,7 +23,7 @@ using RefCount = std::uint32_t;
 static_assert(std::is_unsigned_v<RefCount>, "RefCount should be unsigned.");
 
 // floating point type to use
-using fp = double;
+using fp = float;//double;
 static_assert(
     std::is_floating_point_v<fp>,
     "fp should be a floating point type (float, *double*, long double)");

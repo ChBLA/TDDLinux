@@ -21,7 +21,11 @@
 #include <regex>
 #include"time.h"
 #include <math.h>
-
+#include <chrono>
+#include <ctime>
+#include <sys/time.h>
+#include <stdio.h>
+#include <unistd.h>
 
 using namespace std;
 
@@ -208,7 +212,7 @@ std::map<int, gate> import_circuit_from_string(std::string circuit) {
 
 		temp_gate.name = g[0];
 
-		if (g[0] == "cx") {
+		if (g[0] == "cx" || g[0] == "cy" || g[0] == "cz" || g[0] == "cnot") {
 			regex pattern("q\\[(\\d+)\\], ?q\\[(\\d+)\\];");
 			if (regex_match(g[1], result, pattern))
 			{
@@ -264,7 +268,7 @@ std::map<int, std::vector<dd::Index>> get_index(std::map<int, gate> gate_set, st
 		std::string nam = gate_set[k].name;
 		//std::cout << nam << std::endl;
 		//std::cout << gate_set[k].qubits[0]<<"    "<<gate_set[k].qubits[1] << endl;
-		if (nam == "cx") {
+		if (nam == "cx" || nam == "cy" || nam == "cz" || nam == "cnot") {
 			int con_q = gate_set[k].qubits[0];
 			int tar_q = gate_set[k].qubits[1];
 			std::string cont_idx = "x";
@@ -640,10 +644,13 @@ dd::TDD gateToTDD(std::string nam, std::vector<dd::Index> index_set, std::unique
 
 	dd::TDD temp_tdd;
 
-	if (nam == "cx") {
+	if (nam == "cx" || nam == "cnot") {
 		temp_tdd = dd->cnot_2_TDD(index_set, 1);
-	}
-	else {
+	} else if (nam == "cy") {
+		temp_tdd = dd->cy_2_TDD(index_set, 1);
+	} else if (nam == "cz") {
+		temp_tdd = dd->cz_2_TDD(index_set, 1);
+	} else {
 		switch (gate_type[nam]) {
 		case 1:
 			temp_tdd = dd->Matrix2TDD(dd::Xmat, index_set);
@@ -675,13 +682,67 @@ dd::TDD gateToTDD(std::string nam, std::vector<dd::Index> index_set, std::unique
 			temp_tdd = dd->diag_matrix_2_TDD(dd::Tdagmat, index_set);
 			break;
 		default:
+			// if (nam[0] == 'r' and nam[1] == 'z') {
+			// 	regex pattern("rz\\((-?\\d.\\d+)\\)");
+			// 	smatch result;
+			// 	regex_match(nam, result, pattern);
+			// 	float theta = stof(result[1]);
+			// 	//dd::GateMatrix Rzmat = { { 1, 0 }, { 0, 0 } , { 0, 0 }, { cos(theta), sin(theta) } };
+			// 	temp_tdd = dd->diag_matrix_2_TDD(dd::Phasemat(theta), index_set);
+			// 	break;
+			// }
 			if (nam[0] == 'r' and nam[1] == 'z') {
 				regex pattern("rz\\((-?\\d.\\d+)\\)");
 				smatch result;
 				regex_match(nam, result, pattern);
 				float theta = stof(result[1]);
-				//dd::GateMatrix Rzmat = { { 1, 0 }, { 0, 0 } , { 0, 0 }, { cos(theta), sin(theta) } };
-				temp_tdd = dd->diag_matrix_2_TDD(dd::Phasemat(theta), index_set);
+				dd::fp act_theta;
+				if (fabs(fabs(theta) - dd::PI) < 0.0000001) {
+					act_theta = dd::PI;
+				} else if (fabs(fabs(theta) - dd::PI_2) < 0.0000001) {
+					act_theta = dd::PI_2;
+				} else if (fabs(fabs(theta) - dd::PI_4) < 0.0000001) {
+					act_theta = dd::PI_4;
+				} else {
+					act_theta = fabs(theta);
+				}
+				temp_tdd = dd->diag_matrix_2_TDD(dd::RZmat(theta < 0.0 ? -act_theta : act_theta), index_set);
+				break;
+			}
+			if (nam[0] == 'r' and nam[1] == 'y') {
+				regex pattern("ry\\((-?\\d.\\d+)\\)");
+				smatch result;
+				regex_match(nam, result, pattern);
+				float theta = stof(result[1]);
+				dd::fp act_theta;
+				if (fabs(fabs(theta) - dd::PI) < 0.0000001) {
+					act_theta = dd::PI;
+				} else if (fabs(fabs(theta) - dd::PI_2) < 0.0000001) {
+					act_theta = dd::PI_2;
+				} else if (fabs(fabs(theta) - dd::PI_4) < 0.0000001) {
+					act_theta = dd::PI_4;
+				} else {
+					act_theta = fabs(theta);
+				}
+				temp_tdd = dd->diag_matrix_2_TDD(dd::RYmat(theta < 0.0 ? -act_theta : act_theta), index_set);
+				break;
+			}
+			if (nam[0] == 'r' and nam[1] == 'x') {
+				regex pattern("rx\\((-?\\d.\\d+)\\)");
+				smatch result;
+				regex_match(nam, result, pattern);
+				float theta = stof(result[1]);
+				dd::fp act_theta;
+				if (fabs(fabs(theta) - dd::PI) < 0.0000001) {
+					act_theta = dd::PI;
+				} else if (fabs(fabs(theta) - dd::PI_2) < 0.0000001) {
+					act_theta = dd::PI_2;
+				} else if (fabs(fabs(theta) - dd::PI_4) < 0.0000001) {
+					act_theta = dd::PI_4;
+				} else {
+					act_theta = fabs(theta);
+				}
+				temp_tdd = dd->diag_matrix_2_TDD(dd::RXmat(theta < 0.0 ? -act_theta : act_theta), index_set);
 				break;
 			}
 			if (nam[0] == 'u' and nam[1] == '1') {
@@ -1024,18 +1085,35 @@ int get_qubits_num(std::string  file_name) {
 
 int get_qubits_num_from_circuit(std::string circuit) {
 
-	auto ss = std::stringstream{circuit};
-
-    for (std::string line; std::getline(ss, line, '\n');)
-        if (line.find("qreg") != std::string::npos) {
+	std::stringstream ss(circuit);
+	std::string line;
+	while (std::getline(ss, line)) {
+		if (line.find("qreg") != std::string::npos) {
+			printf("I got to the first if with %s\n", line.c_str());
 			smatch result;
 			string qubit_str = split(line, " ")[1];
-			regex pattern("qreq q\\[(\\d+)\\];");
+			regex pattern("qreg q\\[(\\d+)\\];");
 			if (regex_match(qubit_str, result, pattern))
 			{
+				printf("I got to the second if with %s\n", result.str(1));
 				return stoi(result[1]);
 			}	
 		}
+	}
+
+    // for (std::string line; std::getline(ss, line, '\n');) {
+    //     if (line.find("qreg") != std::string::npos) {
+	// 		printf("I got to the first if with %s\n", line);
+	// 		smatch result;
+	// 		string qubit_str = split(line, " ")[1];
+	// 		regex pattern("qreg q\\[(\\d+)\\];");
+	// 		if (regex_match(qubit_str, result, pattern))
+	// 		{
+	// 			printf("I got to the second if with %s and %s\n", result[0], result[1]);
+	// 			return stoi(result[1]);
+	// 		}	
+	// 	}
+	// }
 
 	return -1;
 }
@@ -1162,9 +1240,10 @@ int* Simulate_with_tdd(std::string path, std::string  file_name, std::unique_ptr
 }
 
 
-dd::TDD plannedContractionOnCircuit(std::string circuit, std::vector<std::tuple<int, int>> plan, std::unique_ptr<dd::Package<>>& dd) {
+std::tuple<dd::TDD, long> plannedContractionOnCircuit(std::string circuit, std::vector<std::tuple<int, int>> plan, std::unique_ptr<dd::Package<>>& dd) {
 	// Load in circuit from file
 	std::map<int, gate> gate_set = import_circuit_from_string(circuit);
+	//printf("Successfully imported circuit\n");
 
 	int* nodes = new int[2];
 	nodes[0] = 0;
@@ -1186,17 +1265,23 @@ dd::TDD plannedContractionOnCircuit(std::string circuit, std::vector<std::tuple<
 	// Prepare Gate TDDs
 	std::vector<dd::TDD> gateTDDs(gate_set.size());
 	for (int i = 0; i < gateTDDs.size(); i++) {
+		//printf("Gate is: %s\n", gate_set[i].name.c_str());
 		gateTDDs[i] = gateToTDD(gate_set[i].name, Index_set[i], dd);
 	}
 
+	struct timeval start, end;
+    long mtime, seconds, useconds;  
+
+	printf("Starting contraction\n\n");
+	gettimeofday(&start, NULL);
 	// Apply plan
 	int current_step = 1;
 	for (int k = 0; k < plan.size(); k++) {
 		{
-			if (((double) k) / ((double) plan.size()) * 10 > current_step) {
-				printf("Done with: %d of %ld\n", k, plan.size());
-				current_step++;
-			}
+			// if (((double) k) / ((double) plan.size()) * 10 > current_step) {
+			// 	printf("Done with: %d of %ld\n", k, plan.size());
+			// 	current_step++;
+			// }
 			int leftIndex = std::get<0>(plan[k]);
 			int rightIndex = std::get<1>(plan[k]);
 
@@ -1216,8 +1301,16 @@ dd::TDD plannedContractionOnCircuit(std::string circuit, std::vector<std::tuple<
 
 		}
 	}
+	gettimeofday(&end, NULL);
 
-	return gateTDDs[std::get<1>(plan[plan.size() - 1])];
+	printf("Done with contraction\n\n");
+	seconds  = end.tv_sec  - start.tv_sec;
+    useconds = end.tv_usec - start.tv_usec;
+    mtime = ((seconds) * 1000 + useconds/1000.0) + 0.5;
+
+    printf("Elapsed time: %ld milliseconds\n", mtime);
+
+	return {gateTDDs[std::get<1>(plan[plan.size() - 1])], mtime};
 }
 
 dd::TDD plannedContractionOnCircuitFromFile(std::string path, std::vector<std::tuple<int, int>> plan, std::string file_name, std::unique_ptr<dd::Package<>>& dd) {

@@ -257,31 +257,28 @@ int save_data() {
 // }
 
 const char* contractCircuit(char* circuit_p, int qubits, char* plan_p) {
-	struct timeval start, end;
-    long mtime, seconds, useconds;    
+  
 
 	std::string plan(plan_p);
 	std::string circuit(circuit_p);
 
 	std::vector<std::tuple<int, int>> actualPlan = get_actual_plan_from_string(plan);
 
-	int n = get_qubits_num_from_circuit(circuit);
+	//int n = get_qubits_num_from_circuit(circuit);
 	int gates = get_gates_num_from_circuit(circuit);
 	auto dd = std::make_unique<dd::Package<>>(2 * gates);
 
-	gettimeofday(&start, NULL);
-	dd::TDD res = plannedContractionOnCircuit(circuit, actualPlan, dd);
-    gettimeofday(&end, NULL);
+	
+	std::tuple<dd::TDD, long> res = plannedContractionOnCircuit(circuit, actualPlan, dd);
+    
+	dd::export2Dot(std::get<0>(res).e, "tdd_res");
 
-	bool resIsIdentity = dd->isTDDIdentity(res, false, n);
+	bool resIsIdentity = dd->isTDDIdentity(std::get<0>(res), false, qubits);
 
 	//return (resIsIdentity + ";" + std::to_string(contTime)).data();
-    seconds  = end.tv_sec  - start.tv_sec;
-    useconds = end.tv_usec - start.tv_usec;
-    mtime = ((seconds) * 1000 + useconds/1000.0) + 0.5;
-    printf("Elapsed time: %ld milliseconds\n", mtime);
+    
 
-	return ((resIsIdentity ? "true" : "false") + std::string("; ") + std::to_string(mtime)).data();
+	return ((resIsIdentity ? "true" : "false") + std::string("; ") + std::to_string(std::get<1>(res))).data();
 }
 
 

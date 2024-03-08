@@ -370,6 +370,92 @@ namespace dd {
 
 		}
 
+		// TODO: adapt
+		TDD cy_2_TDD(std::vector<Index> var, int ca = 1) {
+
+
+			TDD low, high, res;
+			std::vector<Edge<mNode>> e(2);
+			if (ca == 1) {
+				if (varOrder[var[0].key] > varOrder[var[3].key] && varOrder[var[0].key] > varOrder[var[4].key]) {
+					low = Matrix2TDD(Imat, { var[3] ,var[4] });
+					high = Matrix2TDD(Ymat, { var[3] ,var[4] });
+					e[0] = low.e;
+					e[1] = high.e;
+					res.e = makeDDNode(2, e, false);
+					res.index_set = { var[0],var[2],var[3],var[4] };
+					low.key_2_index.push_back(var[0].key);
+					res.key_2_index = low.key_2_index;
+				}
+				else if (varOrder[var[3].key] > varOrder[var[0].key] && varOrder[var[3].key] > varOrder[var[4].key]) {
+					low = Matrix2TDD(Imat, { var[0] ,var[4] });
+					high = Matrix2TDD(Ymat, { var[0] ,var[4] });
+					e[0] = low.e;
+					e[1] = high.e;
+					res.e = makeDDNode(2, e, false);
+					res.index_set = { var[0],var[2],var[3],var[4] };
+					low.key_2_index.push_back(var[3].key);
+					res.key_2_index = low.key_2_index;
+				}
+				else {
+					low = Matrix2TDD(Imat, { var[0] ,var[3] });
+					high = Matrix2TDD(Ymat, { var[0] ,var[3] });
+					e[0] = low.e;
+					e[1] = high.e;
+					res.e = makeDDNode(2, e, false);
+					res.index_set = { var[0],var[2],var[3],var[4] };
+					low.key_2_index.push_back(var[4].key);
+					res.key_2_index = low.key_2_index;
+				}
+				return res;
+			}
+			return res;
+
+		}
+
+		// TODO: adapt
+		TDD cz_2_TDD(std::vector<Index> var, int ca = 1) {
+
+
+			TDD low, high, res;
+			std::vector<Edge<mNode>> e(2);
+			if (ca == 1) {
+				if (varOrder[var[0].key] > varOrder[var[3].key] && varOrder[var[0].key] > varOrder[var[4].key]) {
+					low = Matrix2TDD(Imat, { var[3] ,var[4] });
+					high = Matrix2TDD(Zmat, { var[3] ,var[4] });
+					e[0] = low.e;
+					e[1] = high.e;
+					res.e = makeDDNode(2, e, false);
+					res.index_set = { var[0],var[2],var[3],var[4] };
+					low.key_2_index.push_back(var[0].key);
+					res.key_2_index = low.key_2_index;
+				}
+				else if (varOrder[var[3].key] > varOrder[var[0].key] && varOrder[var[3].key] > varOrder[var[4].key]) {
+					low = Matrix2TDD(Imat, { var[0] ,var[4] });
+					high = Matrix2TDD(Zmat, { var[0] ,var[4] });
+					e[0] = low.e;
+					e[1] = high.e;
+					res.e = makeDDNode(2, e, false);
+					res.index_set = { var[0],var[2],var[3],var[4] };
+					low.key_2_index.push_back(var[3].key);
+					res.key_2_index = low.key_2_index;
+				}
+				else {
+					low = Matrix2TDD(Imat, { var[0] ,var[3] });
+					high = Matrix2TDD(Zmat, { var[0] ,var[3] });
+					e[0] = low.e;
+					e[1] = high.e;
+					res.e = makeDDNode(2, e, false);
+					res.index_set = { var[0],var[2],var[3],var[4] };
+					low.key_2_index.push_back(var[4].key);
+					res.key_2_index = low.key_2_index;
+				}
+				return res;
+			}
+			return res;
+
+		}
+
 		//==========================================我写的========================================
 
 		///
@@ -837,12 +923,13 @@ namespace dd {
 			
 			dd::mNode::isTerminal(r.p->e[0].p)
 		*/
-		int isTDDIdentity(TDD tdd, bool lengthIndifferent, int expectedLength) {
+		bool isTDDIdentity(TDD tdd, bool lengthIndifferent, int expectedLength) {
+			printf("Initial expectedLength = %d\n", expectedLength);
 			bool isTerminalNode = dd::mNode::isTerminal(tdd.e.p);
 			if (isTerminalNode) {
 				return lengthIndifferent || expectedLength == 0;
 			}
-			return isNodeIdentity(tdd.e, false, expectedLength);
+			return isNodeIdentity(tdd.e, lengthIndifferent, expectedLength);
 		}
 
 		
@@ -1184,6 +1271,9 @@ namespace dd {
 		bool isNodeIdentity(const Edge<mNode>& edge, bool lengthIndifferent, int expectedLenght) {
 			auto node = edge.p;
 			if (dd::mNode::isTerminal(node)) {
+				if (!(lengthIndifferent || expectedLenght == 0)) {
+					printf("I failed at node iden because expec len = %d\n", expectedLenght);
+				}
 				return lengthIndifferent || expectedLenght == 0;
 			}
 			

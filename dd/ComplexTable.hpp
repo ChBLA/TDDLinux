@@ -512,7 +512,7 @@ private:
 
   // numerical tolerance to be used for floating point values
   // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables,readability-identifier-naming)
-  static inline fp TOLERANCE = std::numeric_limits<dd::fp>::epsilon() * 1024;
+  static inline fp TOLERANCE = std::numeric_limits<dd::fp>::epsilon();
 
   Entry* available{};
   std::vector<std::vector<Entry>> chunks{
