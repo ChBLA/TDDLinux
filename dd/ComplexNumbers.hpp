@@ -40,8 +40,14 @@ struct ComplexNumbers {
     r.i->value = CTEntry::val(a.i) - CTEntry::val(b.i);
   }
   static void mul(Complex& r, const Complex& a, const Complex& b) {
-    assert(r != Complex::zero);
-    assert(r != Complex::one);
+    if (r == Complex::zero) {
+      printf("Got a zero in mul");
+    } else if (r == Complex::one) {
+      printf("Got a one in mul");
+    }
+    
+    //assert(r != Complex::zero);
+    //assert(r != Complex::one);
     if (a.approximatelyOne()) {
       r.setVal(b);
     } else if (b.approximatelyOne()) {

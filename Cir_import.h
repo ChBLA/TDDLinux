@@ -26,6 +26,7 @@
 #include <sys/time.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <filesystem>
 
 using namespace std;
 
@@ -271,10 +272,15 @@ std::map<int, std::vector<dd::Index>> get_index(std::map<int, gate> gate_set, st
 		if (nam == "cx" || nam == "cy" || nam == "cz" || nam == "cnot") {
 			int con_q = gate_set[k].qubits[0];
 			int tar_q = gate_set[k].qubits[1];
-			std::string cont_idx = "x";
-			cont_idx += to_string(con_q);
-			cont_idx += to_string(0);
-			cont_idx += to_string(qubit_idx[con_q]);
+			std::string cont_idx1 = "x";
+			cont_idx1 += to_string(con_q);
+			cont_idx1 += to_string(0);
+			cont_idx1 += to_string(qubit_idx[con_q]);
+			qubit_idx[con_q] += 1;
+			std::string cont_idx2 = "x";
+			cont_idx2 += to_string(con_q);
+			cont_idx2 += to_string(0);
+			cont_idx2 += to_string(qubit_idx[con_q]);
 			std::string targ_idx1 = "x";
 			targ_idx1 += to_string(tar_q);
 			targ_idx1 += to_string(0);
@@ -284,9 +290,9 @@ std::map<int, std::vector<dd::Index>> get_index(std::map<int, gate> gate_set, st
 			targ_idx2 += to_string(tar_q);
 			targ_idx2 += to_string(0);
 			targ_idx2 += to_string(qubit_idx[tar_q]);
-			Index_set[k] = { {cont_idx,hyper_idx[cont_idx]},{cont_idx,hyper_idx[cont_idx] + 1},{cont_idx,hyper_idx[cont_idx] + 2},{targ_idx1,hyper_idx[targ_idx1]},{targ_idx2,hyper_idx[targ_idx2]} };
+			Index_set[k] = { {cont_idx1,hyper_idx[cont_idx1]},{cont_idx2,hyper_idx[cont_idx2]},{targ_idx1,hyper_idx[targ_idx1]},{targ_idx2,hyper_idx[targ_idx2]} };
 			//std::cout << cont_idx<<" " << hyper_idx[cont_idx] << " " << cont_idx << " " << hyper_idx[cont_idx] + 1 << " " << cont_idx << " " << hyper_idx[cont_idx] + 2 << " " << targ_idx1 << " " << hyper_idx[targ_idx1] << " " << targ_idx2 << " " <<hyper_idx[targ_idx2] << " " << std::endl;
-			hyper_idx[cont_idx] += 2;
+			//hyper_idx[cont_idx] += 2;
 
 		}
 		else {
@@ -302,7 +308,7 @@ std::map<int, std::vector<dd::Index>> get_index(std::map<int, gate> gate_set, st
 			targ_idx2 += to_string(0);
 			targ_idx2 += to_string(qubit_idx[tar_q]);
 			Index_set[k] = { {targ_idx1,hyper_idx[targ_idx1]},{targ_idx2,hyper_idx[targ_idx2]} };
-			if (nam == "z" || nam == "s" || nam == "sdg" || nam == "t" || nam == "tdg" || (nam[0] == 'u' && nam[1] == '1') || (nam[0] == 'r' && nam[1] == 'z')) {
+			if (false && (nam == "x" || nam == "h" || nam == "z" || nam == "s" || nam == "sdg" || nam == "t" || nam == "tdg" || (nam[0] == 'u' && nam[1] == '1') || (nam[0] == 'r' && nam[1] == 'z') || (nam[0] == 'r' && nam[1] == 'y'))) {
 				Index_set[k] = { {targ_idx1,hyper_idx[targ_idx1]},{targ_idx1,hyper_idx[targ_idx1] + 1} };
 				qubit_idx[tar_q] -= 1;
 				hyper_idx[targ_idx1] += 1;
@@ -664,22 +670,22 @@ dd::TDD gateToTDD(std::string nam, std::vector<dd::Index> index_set, std::unique
 
 			break;
 		case 3:
-			temp_tdd = dd->diag_matrix_2_TDD(dd::Zmat, index_set);
+			temp_tdd = dd->Matrix2TDD(dd::Zmat, index_set);
 			break;
 		case 4:
 			temp_tdd = dd->Matrix2TDD(dd::Hmat, index_set);
 			break;
 		case 5:
-			temp_tdd = dd->diag_matrix_2_TDD(dd::Smat, index_set);
+			temp_tdd = dd->Matrix2TDD(dd::Smat, index_set);
 			break;
 		case 6:
-			temp_tdd = dd->diag_matrix_2_TDD(dd::Sdagmat, index_set);
+			temp_tdd = dd->Matrix2TDD(dd::Sdagmat, index_set);
 			break;
 		case 7:
-			temp_tdd = dd->diag_matrix_2_TDD(dd::Tmat, index_set);
+			temp_tdd = dd->Matrix2TDD(dd::Tmat, index_set);
 			break;
 		case 8:
-			temp_tdd = dd->diag_matrix_2_TDD(dd::Tdagmat, index_set);
+			temp_tdd = dd->Matrix2TDD(dd::Tdagmat, index_set);
 			break;
 		default:
 			// if (nam[0] == 'r' and nam[1] == 'z') {
@@ -696,17 +702,18 @@ dd::TDD gateToTDD(std::string nam, std::vector<dd::Index> index_set, std::unique
 				smatch result;
 				regex_match(nam, result, pattern);
 				float theta = stof(result[1]);
-				dd::fp act_theta;
-				if (fabs(fabs(theta) - dd::PI) < 0.0000001) {
-					act_theta = dd::PI;
-				} else if (fabs(fabs(theta) - dd::PI_2) < 0.0000001) {
-					act_theta = dd::PI_2;
-				} else if (fabs(fabs(theta) - dd::PI_4) < 0.0000001) {
-					act_theta = dd::PI_4;
-				} else {
-					act_theta = fabs(theta);
-				}
-				temp_tdd = dd->diag_matrix_2_TDD(dd::RZmat(theta < 0.0 ? -act_theta : act_theta), index_set);
+				// dd::fp act_theta;
+				// if (fabs(fabs(theta) - dd::PI) < 0.0000001) {
+				// 	act_theta = dd::PI;
+				// } else if (fabs(fabs(theta) - dd::PI_2) < 0.0000001) {
+				// 	act_theta = dd::PI_2;
+				// } else if (fabs(fabs(theta) - dd::PI_4) < 0.0000001) {
+				// 	act_theta = dd::PI_4;
+				// } else {
+				// 	act_theta = fabs(theta);
+				// }
+				// temp_tdd = dd->diag_matrix_2_TDD(dd::RZmat(theta < 0.0 ? -act_theta : act_theta), index_set);
+				temp_tdd = dd->Matrix2TDD(dd::RZmat(theta), index_set);
 				break;
 			}
 			if (nam[0] == 'r' and nam[1] == 'y') {
@@ -714,17 +721,18 @@ dd::TDD gateToTDD(std::string nam, std::vector<dd::Index> index_set, std::unique
 				smatch result;
 				regex_match(nam, result, pattern);
 				float theta = stof(result[1]);
-				dd::fp act_theta;
-				if (fabs(fabs(theta) - dd::PI) < 0.0000001) {
-					act_theta = dd::PI;
-				} else if (fabs(fabs(theta) - dd::PI_2) < 0.0000001) {
-					act_theta = dd::PI_2;
-				} else if (fabs(fabs(theta) - dd::PI_4) < 0.0000001) {
-					act_theta = dd::PI_4;
-				} else {
-					act_theta = fabs(theta);
-				}
-				temp_tdd = dd->diag_matrix_2_TDD(dd::RYmat(theta < 0.0 ? -act_theta : act_theta), index_set);
+				// dd::fp act_theta;
+				// if (fabs(fabs(theta) - dd::PI) < 0.0000001) {
+				// 	act_theta = dd::PI;
+				// } else if (fabs(fabs(theta) - dd::PI_2) < 0.0000001) {
+				// 	act_theta = dd::PI_2;
+				// } else if (fabs(fabs(theta) - dd::PI_4) < 0.0000001) {
+				// 	act_theta = dd::PI_4;
+				// } else {
+				// 	act_theta = fabs(theta);
+				// }
+				// temp_tdd = dd->diag_matrix_2_TDD(dd::RYmat(theta < 0.0 ? -act_theta : act_theta), index_set);
+				temp_tdd = dd->Matrix2TDD(dd::RYmat(theta), index_set);
 				break;
 			}
 			if (nam[0] == 'r' and nam[1] == 'x') {
@@ -732,17 +740,18 @@ dd::TDD gateToTDD(std::string nam, std::vector<dd::Index> index_set, std::unique
 				smatch result;
 				regex_match(nam, result, pattern);
 				float theta = stof(result[1]);
-				dd::fp act_theta;
-				if (fabs(fabs(theta) - dd::PI) < 0.0000001) {
-					act_theta = dd::PI;
-				} else if (fabs(fabs(theta) - dd::PI_2) < 0.0000001) {
-					act_theta = dd::PI_2;
-				} else if (fabs(fabs(theta) - dd::PI_4) < 0.0000001) {
-					act_theta = dd::PI_4;
-				} else {
-					act_theta = fabs(theta);
-				}
-				temp_tdd = dd->diag_matrix_2_TDD(dd::RXmat(theta < 0.0 ? -act_theta : act_theta), index_set);
+				// dd::fp act_theta;
+				// if (fabs(fabs(theta) - dd::PI) < 0.0000000000001) {
+				// 	act_theta = dd::PI;
+				// } else if (fabs(fabs(theta) - dd::PI_2) < 0.0000000000001) {
+				// 	act_theta = dd::PI_2;
+				// } else if (fabs(fabs(theta) - dd::PI_4) < 0.0000000000001) {
+				// 	act_theta = dd::PI_4;
+				// } else {
+				// 	act_theta = fabs(theta);
+				// }
+				// temp_tdd = dd->diag_matrix_2_TDD(dd::RXmat(theta < 0.0 ? -act_theta : act_theta), index_set);
+				temp_tdd = dd->Matrix2TDD(dd::RXmat(theta), index_set);
 				break;
 			}
 			if (nam[0] == 'u' and nam[1] == '1') {
@@ -758,7 +767,7 @@ dd::TDD gateToTDD(std::string nam, std::vector<dd::Index> index_set, std::unique
 
 				//dd::GateMatrix  U1mat = { { 1, 0 }, { 0, 0 } , { 0, 0 }, { cos(theta), sin(theta) }  };
 
-				temp_tdd = dd->diag_matrix_2_TDD(dd::Phasemat(theta), index_set);
+				temp_tdd = dd->Matrix2TDD(dd::Phasemat(theta), index_set);
 				break;
 			}
 			if (nam[0] == 'u' and nam[1] == '3') {
@@ -1240,7 +1249,8 @@ int* Simulate_with_tdd(std::string path, std::string  file_name, std::unique_ptr
 }
 
 
-std::tuple<dd::TDD, long> plannedContractionOnCircuit(std::string circuit, std::vector<std::tuple<int, int>> plan, std::unique_ptr<dd::Package<>>& dd) {
+std::tuple<dd::TDD, long> plannedContractionOnCircuit(std::string circuit, std::vector<std::tuple<int, int>> plan, 
+														std::unique_ptr<dd::Package<>>& dd, std::string res_filename, bool debugging) {
 	// Load in circuit from file
 	std::map<int, gate> gate_set = import_circuit_from_string(circuit);
 	//printf("Successfully imported circuit\n");
@@ -1267,6 +1277,18 @@ std::tuple<dd::TDD, long> plannedContractionOnCircuit(std::string circuit, std::
 	for (int i = 0; i < gateTDDs.size(); i++) {
 		//printf("Gate is: %s\n", gate_set[i].name.c_str());
 		gateTDDs[i] = gateToTDD(gate_set[i].name, Index_set[i], dd);
+		if (debugging) {
+			printf((std::string("Gate ") + std::string(gate_set[i].name) + std::string(":\n")).c_str());
+			for (int j = 0; j < Index_set[i].size(); j++) {
+				printf("    Gate %d-%d: key name = %s, idx = %d\n", i, j, Index_set[i][j].key.c_str(), Index_set[i][j].idx);
+			}
+			printf("\n");
+			std::string gate_name_fs = gate_set[i].name;
+			std::replace(gate_name_fs.begin(), gate_name_fs.end(), '(', '_');
+			std::replace(gate_name_fs.begin(), gate_name_fs.end(), ')', '_');
+
+			dd::export2Dot(gateTDDs[i].e, "cpp_debugging/" + res_filename + "_g" + std::to_string(i) + "_" + gate_name_fs);
+		}
 	}
 
 	struct timeval start, end;
@@ -1282,11 +1304,19 @@ std::tuple<dd::TDD, long> plannedContractionOnCircuit(std::string circuit, std::
 			// 	printf("Done with: %d of %ld\n", k, plan.size());
 			// 	current_step++;
 			// }
+			std::string folder_name = std::string("cpp_debugging/contraction_") + std::to_string(k) + "/";
+
 			int leftIndex = std::get<0>(plan[k]);
 			int rightIndex = std::get<1>(plan[k]);
 
 			dd::TDD leftTDD = gateTDDs[leftIndex];
 			dd::TDD rightTDD = gateTDDs[rightIndex];
+
+			if (debugging) {
+				std::filesystem::create_directory(folder_name);
+				dd::export2Dot(leftTDD.e, folder_name + res_filename + "_v" + std::to_string(k));
+				dd::export2Dot(rightTDD.e, folder_name + res_filename + "_h" + std::to_string(k));
+			}
 
 			dd::TDD resTDD = applyTDDs(leftTDD, rightTDD, dd);
 
@@ -1298,6 +1328,9 @@ std::tuple<dd::TDD, long> plannedContractionOnCircuit(std::string circuit, std::
 			}
 
 			gateTDDs[rightIndex] = resTDD;
+			if (debugging) {
+				dd::export2Dot(resTDD.e, folder_name + res_filename + "_r" + std::to_string(k));
+			}
 
 		}
 	}

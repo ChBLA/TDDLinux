@@ -11,7 +11,7 @@ namespace dd {
 // integer type used for indexing qubits
 // needs to be a signed type to encode -1 as the index for the terminal
 // std::int8_t can address up to 128 qubits as [0, ..., 127]
-using Qubit = std::int16_t;
+using Qubit = std::int32_t;
 static_assert(std::is_signed_v<Qubit>, "Type Qubit must be signed.");
 
 // integer type used for specifying numbers of qubits

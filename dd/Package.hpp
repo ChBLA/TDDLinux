@@ -332,36 +332,51 @@ namespace dd {
 
 
 			TDD low, high, res;
-			std::vector<Edge<mNode>> e(2);
+			std::vector<Edge<mNode>> e(2), e_low(2), e_high(2);
 			if (ca == 1) {
-				if (varOrder[var[0].key] > varOrder[var[3].key] && varOrder[var[0].key] > varOrder[var[4].key]) {
-					low = Matrix2TDD(Imat, { var[3] ,var[4] });
-					high = Matrix2TDD(Xmat, { var[3] ,var[4] });
-					e[0] = low.e;
-					e[1] = high.e;
-					res.e = makeDDNode(2, e, false);
-					res.index_set = { var[0],var[2],var[3],var[4] };
+				if (varOrder[var[0].key] > varOrder[var[2].key] && varOrder[var[0].key] > varOrder[var[3].key]) {
+					printf("CNOT case 1\n");
+					low = Matrix2TDD(Imat, { var[2] ,var[3] });
+					high = Matrix2TDD(Xmat, { var[2] ,var[3] });
+					e_low[0] = low.e;
+					e_low[1] = Edge<mNode>::zero;
+					e_high[0] = Edge<mNode>::zero;
+					e_high[1] = high.e;
+					e[0] = makeDDNode(2, e_low, false);
+					e[1] = makeDDNode(2, e_high, false);
+					res.e = makeDDNode(3, e, false);
+					res.index_set = { var[0],var[1],var[2],var[3] };
 					low.key_2_index.push_back(var[0].key);
 					res.key_2_index = low.key_2_index;
 				}
-				else if (varOrder[var[3].key] > varOrder[var[0].key] && varOrder[var[3].key] > varOrder[var[4].key]) {
-					low = Matrix2TDD(Imat, { var[0] ,var[4] });
-					high = Matrix2TDD(Xmat, { var[0] ,var[4] });
-					e[0] = low.e;
-					e[1] = high.e;
-					res.e = makeDDNode(2, e, false);
-					res.index_set = { var[0],var[2],var[3],var[4] };
-					low.key_2_index.push_back(var[3].key);
+				else if (varOrder[var[2].key] > varOrder[var[0].key] && varOrder[var[2].key] > varOrder[var[3].key]) {
+					printf("CNOT case 2\n");
+					low = Matrix2TDD(Imat, { var[0] ,var[3] });
+					high = Matrix2TDD(Xmat, { var[0] ,var[3] });
+					e_low[0] = low.e;
+					e_low[1] = Edge<mNode>::zero;
+					e_high[0] = Edge<mNode>::zero;
+					e_high[1] = high.e;
+					e[0] = makeDDNode(2, e_low, false);
+					e[1] = makeDDNode(2, e_high, false);
+					res.e = makeDDNode(3, e, false);
+					res.index_set = { var[0],var[1],var[2],var[3] };
+					low.key_2_index.push_back(var[2].key);
 					res.key_2_index = low.key_2_index;
 				}
 				else {
-					low = Matrix2TDD(Imat, { var[0] ,var[3] });
-					high = Matrix2TDD(Xmat, { var[0] ,var[3] });
-					e[0] = low.e;
-					e[1] = high.e;
-					res.e = makeDDNode(2, e, false);
-					res.index_set = { var[0],var[2],var[3],var[4] };
-					low.key_2_index.push_back(var[4].key);
+					printf("CNOT case 3\n");
+					low = Matrix2TDD(Imat, { var[0] ,var[2] });
+					high = Matrix2TDD(Xmat, { var[0] ,var[2] });
+					e_low[0] = low.e;
+					e_low[1] = Edge<mNode>::zero;
+					e_high[0] = Edge<mNode>::zero;
+					e_high[1] = high.e;
+					e[0] = makeDDNode(2, e_low, false);
+					e[1] = makeDDNode(2, e_high, false);
+					res.e = makeDDNode(3, e, false);
+					res.index_set = { var[0],var[1],var[2],var[3] };
+					low.key_2_index.push_back(var[3].key);
 					res.key_2_index = low.key_2_index;
 				}
 				return res;
@@ -524,6 +539,9 @@ namespace dd {
 							r.w = maxc;
 						}
 						else {
+							if (r.w.exactlyZero()) {
+								printf("L528");
+							}
 							ComplexNumbers::mul(r.w, r.w, maxc);
 						}
 					}
@@ -768,11 +786,15 @@ namespace dd {
 			for (k = 0; k < var_cont_temp.size(); ++k) {
 				if (find(var_out_key.begin(), var_out_key.end(), var_cont_temp[k]) == var_out_key.end()) {
 					if (find(var_cont.begin(), var_cont.end(), var_cont_temp[k]) == var_cont.end()) {
+						printf("Var cont key %d: %s\n", k, var_cont_temp[k].c_str());
 						var_cont.push_back(var_cont_temp[k]);
 					}
 				}
 			}
-
+			printf("\n");
+			for (k = 0; k < var_out_key.size(); k++) {
+				printf("Var out key %d: %s\n", k, var_out_key[k].c_str());
+			}
 
 			if (to_test) {
 				std::cout << "TDD1: ";
@@ -1049,7 +1071,11 @@ namespace dd {
 
 			addTable.insert({ xCopy.p,xCopy.w }, { yCopy.p,yCopy.w }, { e.p, e.w });
 			if (x.w != Complex::one) {
-				cn.mul(e.w, e.w, x.w);
+				if (!e.w.exactlyZero()) {
+					cn.mul(e.w, e.w, x.w);
+				} else {
+					printf("L1058");
+				}
 				cn.returnToCache(yCopy.w);
 			}
 			return e;

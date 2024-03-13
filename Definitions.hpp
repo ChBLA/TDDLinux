@@ -9,6 +9,7 @@
 #include <utility>
 #include <variant>
 #include <vector>
+#include <limits>
 
 namespace qc {
 class QFRException : public std::invalid_argument {
@@ -41,9 +42,9 @@ using Targets = std::vector<Qubit>;
 using BitString = std::bitset<128>;
 
 // floating-point type used throughout the library
-using fp = double;
+using fp = float;
 
-constexpr fp PARAMETER_TOLERANCE = 1e-13;
+constexpr fp PARAMETER_TOLERANCE = 0.00000381469726563f;//1e-13;
 
 static constexpr fp PI = static_cast<fp>(
     3.141592653589793238462643383279502884197169399375105820974L);

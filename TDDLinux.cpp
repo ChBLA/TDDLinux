@@ -256,11 +256,12 @@ int save_data() {
 // 	return (resIsIdentity + ";" + std::to_string(contTime)).data();
 // }
 
-const char* contractCircuit(char* circuit_p, int qubits, char* plan_p) {
+const char* contractCircuit(char* circuit_p, int qubits, char* plan_p, char* res_filename_p, bool debugging) {
   
 
 	std::string plan(plan_p);
 	std::string circuit(circuit_p);
+	std::string res_filename(res_filename_p);
 
 	std::vector<std::tuple<int, int>> actualPlan = get_actual_plan_from_string(plan);
 
@@ -269,9 +270,9 @@ const char* contractCircuit(char* circuit_p, int qubits, char* plan_p) {
 	auto dd = std::make_unique<dd::Package<>>(2 * gates);
 
 	
-	std::tuple<dd::TDD, long> res = plannedContractionOnCircuit(circuit, actualPlan, dd);
+	std::tuple<dd::TDD, long> res = plannedContractionOnCircuit(circuit, actualPlan, dd, res_filename, debugging);
     
-	dd::export2Dot(std::get<0>(res).e, "tdd_res");
+	dd::export2Dot(std::get<0>(res).e, res_filename);
 
 	bool resIsIdentity = dd->isTDDIdentity(std::get<0>(res), false, qubits);
 
@@ -289,8 +290,8 @@ const char* contractCircuit(char* circuit_p, int qubits, char* plan_p) {
 
 
 extern "C" {
-	const char* pyContractCircuit(char* circuit_p, int qubits, char* plan_p) {
-		return contractCircuit(circuit_p, qubits, plan_p);
+	const char* pyContractCircuit(char* circuit_p, int qubits, char* plan_p, char* res_filename, bool debugging) {
+		return contractCircuit(circuit_p, qubits, plan_p, res_filename, debugging);
 	}
 
 	int testerFunc(int num) {
