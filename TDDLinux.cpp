@@ -291,7 +291,8 @@ const char* contractCircuit(char* circuit_p, int qubits, char* plan_p, char* res
 		}
 	}
 
-	dd::export2Dot(std::get<0>(res).e, res_filename);
+	if (debugging)
+		dd::export2Dot(std::get<0>(res).e, res_filename);
 
 	bool resIsIdentity = dd->isTDDIdentity(std::get<0>(res), false, qubits);
 
