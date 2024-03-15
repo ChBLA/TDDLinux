@@ -269,8 +269,28 @@ const char* contractCircuit(char* circuit_p, int qubits, char* plan_p, char* res
 	int gates = get_gates_num_from_circuit(circuit);
 	auto dd = std::make_unique<dd::Package<>>(2 * gates);
 
-	std::tuple<dd::TDD, long> res = plannedContractionOnCircuit(circuit, actualPlan, dd, res_filename, debugging);
-    
+	json result_data;
+	std::tuple<dd::TDD, long> res = plannedContractionOnCircuit(circuit, actualPlan, dd, res_filename, debugging, result_data);
+    result_data["name"] = res_filename;
+
+	// Pretty print json file
+	std::string folder_name = std::string("dataset/cpp_size_prediction/");
+	if (!std::filesystem::is_directory(folder_name) || !std::filesystem::exists(folder_name))
+		std::filesystem::create_directory(folder_name);
+	std::ofstream out_file(folder_name + res_filename + ".json");
+	out_file << std::setw(4) << result_data << std::endl;
+	out_file.close();
+
+	if (debugging) {
+		for (int j = 0; j < std::get<0>(res).gates.size(); j++) {
+			printf("    Gate %d: gate name = %s, params = ", j, std::get<0>(res).gates[j].name.c_str());
+			for (int k = 0; k < std::get<0>(res).gates[j].params.size(); k++) {
+				printf("%f, ", std::get<0>(res).gates[j].params[k]);
+			}
+			printf("\n");
+		}
+	}
+
 	dd::export2Dot(std::get<0>(res).e, res_filename);
 
 	bool resIsIdentity = dd->isTDDIdentity(std::get<0>(res), false, qubits);

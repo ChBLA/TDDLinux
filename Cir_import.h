@@ -5,6 +5,7 @@
 
 #include "dd/Package.hpp"
 #include "dd/Export.hpp"
+#include "nlohmann/json.hpp"
 
 #include <unordered_set>
 #include <vector>
@@ -29,7 +30,7 @@
 #include <filesystem>
 
 using namespace std;
-
+using json = nlohmann::json;
 //auto dd = std::make_unique<dd::Package<>>(100);
 
 constexpr long double PI = 3.14159265358979323846264338327950288419716939937510L;
@@ -651,7 +652,8 @@ dd::TDD gateToTDD(std::string nam, std::vector<dd::Index> index_set, std::unique
 	gate_type["id"] = 9;
 
 	dd::TDD temp_tdd;
-
+	std::string gate_name = nam;
+	std::vector<dd::fp> params = {};
 	if (nam == "cx" || nam == "cnot") {
 		//temp_tdd = dd->cnot_2_TDD(index_set, 1);
 		temp_tdd = dd->cgate_2_TDD(index_set, "x");
@@ -668,11 +670,6 @@ dd::TDD gateToTDD(std::string nam, std::vector<dd::Index> index_set, std::unique
 			break;
 		case 2:
 			temp_tdd = dd->Matrix2TDD(dd::Ymat, index_set);
-
-			//std::cout << temp_tdd.e.w << " " << int(temp_tdd.e.p->v) << std::endl;
-			//std::cout << temp_tdd.e.p->e[0].w << " " << int(temp_tdd.e.p->e[0].p->v) << std::endl;
-			//std::cout << temp_tdd.e.p->e[1].w << " " << int(temp_tdd.e.p->e[1].p->v) << std::endl;
-
 			break;
 		case 3:
 			temp_tdd = dd->Matrix2TDD(dd::Zmat, index_set);
@@ -696,20 +693,15 @@ dd::TDD gateToTDD(std::string nam, std::vector<dd::Index> index_set, std::unique
 			temp_tdd = dd->Matrix2TDD(dd::Imat, index_set);
 			break;
 		default:
-			// if (nam[0] == 'r' and nam[1] == 'z') {
-			// 	regex pattern("rz\\((-?\\d.\\d+)\\)");
-			// 	smatch result;
-			// 	regex_match(nam, result, pattern);
-			// 	float theta = stof(result[1]);
-			// 	//dd::GateMatrix Rzmat = { { 1, 0 }, { 0, 0 } , { 0, 0 }, { cos(theta), sin(theta) } };
-			// 	temp_tdd = dd->diag_matrix_2_TDD(dd::Phasemat(theta), index_set);
-			// 	break;
-			// }
+			gate_name = "";
+			gate_name += nam[0];
+			gate_name += nam[1];
 			if (nam[0] == 'r' and nam[1] == 'z') {
 				regex pattern("rz\\((-?\\d.\\d+)\\)");
 				smatch result;
 				regex_match(nam, result, pattern);
 				float theta = stof(result[1]);
+				params.push_back(theta);
 				// dd::fp act_theta;
 				// if (fabs(fabs(theta) - dd::PI) < 0.0000001) {
 				// 	act_theta = dd::PI;
@@ -739,6 +731,7 @@ dd::TDD gateToTDD(std::string nam, std::vector<dd::Index> index_set, std::unique
 				smatch result;
 				regex_match(nam, result, pattern);
 				float theta = stof(result[1]);
+				params.push_back(theta);
 				// dd::fp act_theta;
 				// if (fabs(fabs(theta) - dd::PI) < 0.0000001) {
 				// 	act_theta = dd::PI;
@@ -758,6 +751,7 @@ dd::TDD gateToTDD(std::string nam, std::vector<dd::Index> index_set, std::unique
 				smatch result;
 				regex_match(nam, result, pattern);
 				float theta = stof(result[1]);
+				params.push_back(theta);
 				// dd::fp act_theta;
 				// if (fabs(fabs(theta) - dd::PI) < 0.0000000000001) {
 				// 	act_theta = dd::PI;
@@ -782,8 +776,7 @@ dd::TDD gateToTDD(std::string nam, std::vector<dd::Index> index_set, std::unique
 				smatch result;
 				regex_match(nam, result, para);
 				float theta = match_a_string(result[1]);
-
-				//dd::GateMatrix  U1mat = { { 1, 0 }, { 0, 0 } , { 0, 0 }, { cos(theta), sin(theta) }  };
+				params.push_back(theta);
 
 				temp_tdd = dd->Matrix2TDD(dd::Phasemat(theta), index_set);
 				break;
@@ -805,6 +798,9 @@ dd::TDD gateToTDD(std::string nam, std::vector<dd::Index> index_set, std::unique
 				float theta = match_a_string(para2[0]);
 				float phi = match_a_string(para2[1]);
 				float lambda = match_a_string(para2[2]);
+				params.push_back(theta);
+				params.push_back(phi);
+				params.push_back(lambda);
 				//dd::GateMatrix  U3mat = { { cos(theta / 2), 0 }, { -cos(lambda) * sin(theta / 2),-sin(lambda) * sin(theta / 2)} , { cos(phi) * sin(theta / 2),sin(phi) * sin(theta / 2) }, { cos(lambda + phi) * cos(theta / 2),sin(lambda + phi) * cos(theta / 2) }  };
 				temp_tdd = dd->Matrix2TDD(dd::U3mat(lambda, phi, theta), index_set);
 				break;
@@ -812,20 +808,62 @@ dd::TDD gateToTDD(std::string nam, std::vector<dd::Index> index_set, std::unique
 		}
 	}
 	dd->incRef(temp_tdd.e);
+	dd::GateDef temp_gate = {gate_name, params};
+	temp_tdd.gates = {temp_gate};
 	return temp_tdd;
 }
 
-dd::TDD applyTDDs(dd::TDD tdd1, dd::TDD tdd2, std::unique_ptr<dd::Package<>>& dd) {
+dd::TDD applyTDDs(dd::TDD tdd1, dd::TDD tdd2, std::unique_ptr<dd::Package<>>& dd, json& res_json) {
+	std::vector<dd::GateDef> new_gates;
+	new_gates.reserve(tdd1.gates.size() + tdd2.gates.size());
+	new_gates.insert(new_gates.end(), tdd1.gates.begin(), tdd1.gates.end());
+	new_gates.insert(new_gates.end(), tdd2.gates.begin(), tdd2.gates.end());
+
+	json left;
+	left["nodes"] = (int)dd->size(tdd1.e);
+	left["gates"] = tdd1.gates;
+	left["indices"] = tdd1.key_2_index;
+
+	json right = {
+		{"nodes", (int)dd->size(tdd2.e)},
+		{"gates", tdd2.gates},
+		{"indices", tdd2.key_2_index}
+	};
+
+	struct timeval start, end;
+	long mtime, seconds, useconds;  
+
 	if (release) {
+		gettimeofday(&start, NULL);
 		auto tmp = dd->cont(tdd1, tdd2);
+		gettimeofday(&end, NULL);
 		dd->incRef(tmp.e);
 		dd->decRef(tdd1.e);
 		tdd1 = tmp;
 		dd->garbageCollect();
 	}
 	else {
+		gettimeofday(&start, NULL);
 		tdd1 = dd->cont(tdd1, tdd2);
+		gettimeofday(&end, NULL);
 	}
+
+	seconds  = end.tv_sec  - start.tv_sec;
+	useconds = end.tv_usec - start.tv_usec;
+	//mtime = ((seconds) * 1000 + useconds/1000.0) + 0.5;
+	mtime = useconds;
+
+	tdd1.gates = new_gates;
+	json result = {
+		{"nodes", (int)dd->size(tdd1.e)},
+		{"gates", tdd1.gates},
+		{"indices", tdd1.key_2_index}
+	};
+
+	res_json["left"] = left;
+	res_json["right"] = right;
+	res_json["result"] = result;
+	res_json["time"] = mtime;
 
 	return tdd1;
 }
@@ -1270,7 +1308,7 @@ int* Simulate_with_tdd(std::string path, std::string  file_name, std::unique_ptr
 
 
 std::tuple<dd::TDD, long> plannedContractionOnCircuit(std::string circuit, std::vector<std::tuple<int, int>> plan, 
-														std::unique_ptr<dd::Package<>>& dd, std::string res_filename, bool debugging) {
+														std::unique_ptr<dd::Package<>>& dd, std::string res_filename, bool debugging, json& result_data) {
 	// Load in circuit from file
 	std::map<int, gate> gate_set = import_circuit_from_string(circuit);
 	//printf("Successfully imported circuit\n");
@@ -1303,6 +1341,13 @@ std::tuple<dd::TDD, long> plannedContractionOnCircuit(std::string circuit, std::
 			for (int j = 0; j < gateTDDs[i].index_set.size(); j++) {
 				printf("    Gate %d-%d: key name = %s, idx = %d\n", i, j, gateTDDs[i].index_set[j].key.c_str(), gateTDDs[i].index_set[j].idx);
 			}
+			for (int j = 0; j < gateTDDs[i].gates.size(); j++) {
+				printf("    Gate %d-%d: gate name = %s, params = ", i, j, gateTDDs[i].gates[j].name.c_str());
+				for (int k = 0; k < gateTDDs[i].gates[j].params.size(); k++) {
+					printf("%f, ", gateTDDs[i].gates[j].params[k]);
+				}
+				printf("\n");
+			}
 			printf("\n");
 			std::string gate_name_fs = gate_set[i].name;
 			std::replace(gate_name_fs.begin(), gate_name_fs.end(), '(', '_');
@@ -1320,6 +1365,7 @@ std::tuple<dd::TDD, long> plannedContractionOnCircuit(std::string circuit, std::
 	gettimeofday(&start, NULL);
 	// Apply plan
 	int current_step = 1;
+	std::vector<json> jsons(plan.size());
 	for (int k = 0; k < plan.size(); k++) {
 		{
 			// if (((double) k) / ((double) plan.size()) * 10 > current_step) {
@@ -1340,7 +1386,15 @@ std::tuple<dd::TDD, long> plannedContractionOnCircuit(std::string circuit, std::
 				dd::export2Dot(rightTDD.e, folder_name + res_filename + "_h" + std::to_string(k));
 			}
 
-			dd::TDD resTDD = applyTDDs(leftTDD, rightTDD, dd);
+			json res_json;
+			dd::TDD resTDD = applyTDDs(leftTDD, rightTDD, dd, res_json);
+			jsons[k] = res_json;
+			// std::tuple<dd::TDD, json> res = applyTDDs(leftTDD, rightTDD, dd);
+			// dd::TDD resTDD = std::get<0>(res);
+			// json resJson = std::get<1>(res);
+			
+			
+
 
 			if (get_max_node) {
 				node_num_max = dd->size(resTDD.e);
@@ -1366,6 +1420,12 @@ std::tuple<dd::TDD, long> plannedContractionOnCircuit(std::string circuit, std::
 
 	if (debugging)
     	printf("Elapsed time: %ld milliseconds\n", mtime);
+
+	result_data["data"] = jsons;
+	// // Pretty print json file
+	// std::ofstream out_file(folder_name + res_filename + "_r" + std::to_string(k) + ".json");
+	// out_file << std::setw(4) << res_json << std::endl;
+	// out_file.close();
 
 	return {gateTDDs[std::get<1>(plan[plan.size() - 1])], mtime};
 }
@@ -1406,8 +1466,11 @@ dd::TDD plannedContractionOnCircuitFromFile(std::string path, std::vector<std::t
 
 			dd::TDD leftTDD = gateTDDs[leftIndex];
 			dd::TDD rightTDD = gateTDDs[rightIndex];
-
-			dd::TDD resTDD = applyTDDs(leftTDD, rightTDD, dd);
+			
+			json res_json;
+			dd::TDD resTDD = applyTDDs(leftTDD, rightTDD, dd, res_json);
+			// std::tuple<dd::TDD, json> res = applyTDDs(leftTDD, rightTDD, dd);
+			// dd::TDD resTDD = std::get<0>(res);
 
 			if (get_max_node) {
 				node_num_max = dd->size(resTDD.e);
