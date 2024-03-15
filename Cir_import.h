@@ -36,6 +36,7 @@ constexpr long double PI = 3.14159265358979323846264338327950288419716939937510L
 
 bool release = true;
 bool get_max_node = true;
+bool to_test = false;
 
 struct gate {
 	std::string name;
@@ -647,15 +648,19 @@ dd::TDD gateToTDD(std::string nam, std::vector<dd::Index> index_set, std::unique
 	gate_type["sdg"] = 6;
 	gate_type["t"] = 7;
 	gate_type["tdg"] = 8;
+	gate_type["id"] = 9;
 
 	dd::TDD temp_tdd;
 
 	if (nam == "cx" || nam == "cnot") {
-		temp_tdd = dd->cnot_2_TDD(index_set, 1);
+		//temp_tdd = dd->cnot_2_TDD(index_set, 1);
+		temp_tdd = dd->cgate_2_TDD(index_set, "x");
 	} else if (nam == "cy") {
-		temp_tdd = dd->cy_2_TDD(index_set, 1);
+		//temp_tdd = dd->cy_2_TDD(index_set, 1);
+		temp_tdd = dd->cgate_2_TDD(index_set, "y");
 	} else if (nam == "cz") {
-		temp_tdd = dd->cz_2_TDD(index_set, 1);
+		//temp_tdd = dd->cz_2_TDD(index_set, 1);
+		temp_tdd = dd->cgate_2_TDD(index_set, "z");
 	} else {
 		switch (gate_type[nam]) {
 		case 1:
@@ -687,6 +692,9 @@ dd::TDD gateToTDD(std::string nam, std::vector<dd::Index> index_set, std::unique
 		case 8:
 			temp_tdd = dd->Matrix2TDD(dd::Tdagmat, index_set);
 			break;
+		case 9:
+			temp_tdd = dd->Matrix2TDD(dd::Imat, index_set);
+			break;
 		default:
 			// if (nam[0] == 'r' and nam[1] == 'z') {
 			// 	regex pattern("rz\\((-?\\d.\\d+)\\)");
@@ -713,7 +721,17 @@ dd::TDD gateToTDD(std::string nam, std::vector<dd::Index> index_set, std::unique
 				// 	act_theta = fabs(theta);
 				// }
 				// temp_tdd = dd->diag_matrix_2_TDD(dd::RZmat(theta < 0.0 ? -act_theta : act_theta), index_set);
+				if (to_test) {
+					for (int i = 0; i < index_set.size(); i++) {
+						printf("RZ index set before %d: %s\n", i, index_set[i].key.c_str());
+					}
+				}
 				temp_tdd = dd->Matrix2TDD(dd::RZmat(theta), index_set);
+				if (to_test) {
+					for (int i = 0; i < temp_tdd.index_set.size(); i++) {
+						printf("RZ index set after %d: %s\n", i, temp_tdd.index_set[i].key.c_str());
+					}
+				}
 				break;
 			}
 			if (nam[0] == 'r' and nam[1] == 'y') {
@@ -782,6 +800,8 @@ dd::TDD gateToTDD(std::string nam, std::vector<dd::Index> index_set, std::unique
 				smatch result;
 				regex_match(nam, result, para);
 				vector<string> para2 = split(result[1], ",");
+				if (to_test)
+					printf("U3 (name = %s) num of parameters = %d\n", nam.c_str(), para2.size());
 				float theta = match_a_string(para2[0]);
 				float phi = match_a_string(para2[1]);
 				float lambda = match_a_string(para2[2]);
@@ -1262,6 +1282,7 @@ std::tuple<dd::TDD, long> plannedContractionOnCircuit(std::string circuit, std::
 
 	// Prepare TDD env (var order ...)
 	dd->varOrder = get_var_order();
+	dd->to_test = debugging;
 
 	std::map<int, std::vector<dd::Index>> Index_set = get_index(gate_set, dd->varOrder);
 	dd::TDD tdd = { dd::Edge<dd::mNode>::one ,{} };
@@ -1279,8 +1300,8 @@ std::tuple<dd::TDD, long> plannedContractionOnCircuit(std::string circuit, std::
 		gateTDDs[i] = gateToTDD(gate_set[i].name, Index_set[i], dd);
 		if (debugging) {
 			printf((std::string("Gate ") + std::string(gate_set[i].name) + std::string(":\n")).c_str());
-			for (int j = 0; j < Index_set[i].size(); j++) {
-				printf("    Gate %d-%d: key name = %s, idx = %d\n", i, j, Index_set[i][j].key.c_str(), Index_set[i][j].idx);
+			for (int j = 0; j < gateTDDs[i].index_set.size(); j++) {
+				printf("    Gate %d-%d: key name = %s, idx = %d\n", i, j, gateTDDs[i].index_set[j].key.c_str(), gateTDDs[i].index_set[j].idx);
 			}
 			printf("\n");
 			std::string gate_name_fs = gate_set[i].name;
@@ -1294,7 +1315,8 @@ std::tuple<dd::TDD, long> plannedContractionOnCircuit(std::string circuit, std::
 	struct timeval start, end;
     long mtime, seconds, useconds;  
 
-	printf("Starting contraction\n\n");
+	if (debugging)
+		printf("Starting contraction\n\n");
 	gettimeofday(&start, NULL);
 	// Apply plan
 	int current_step = 1;
@@ -1336,12 +1358,14 @@ std::tuple<dd::TDD, long> plannedContractionOnCircuit(std::string circuit, std::
 	}
 	gettimeofday(&end, NULL);
 
-	printf("Done with contraction\n\n");
+	if (debugging)
+		printf("Done with contraction\n\n");
 	seconds  = end.tv_sec  - start.tv_sec;
     useconds = end.tv_usec - start.tv_usec;
     mtime = ((seconds) * 1000 + useconds/1000.0) + 0.5;
 
-    printf("Elapsed time: %ld milliseconds\n", mtime);
+	if (debugging)
+    	printf("Elapsed time: %ld milliseconds\n", mtime);
 
 	return {gateTDDs[std::get<1>(plan[plan.size() - 1])], mtime};
 }

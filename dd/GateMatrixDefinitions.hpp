@@ -49,6 +49,17 @@ constexpr GateMatrix Vmat{complex_SQRT2_2, complex_miSQRT2_2, complex_miSQRT2_2,
 constexpr GateMatrix Vdagmat{complex_SQRT2_2, complex_iSQRT2_2,
                              complex_iSQRT2_2, complex_SQRT2_2};
 
+// constexpr GateMatrix LLmat{complex_one, complex_zero, complex_zero, complex_zero};
+// constexpr GateMatrix HHmat{complex_zero, complex_zero, complex_zero, complex_one};
+
+inline GateMatrix LLmat(ComplexValue v) {
+  return GateMatrix{{v, complex_zero, complex_zero, complex_zero}};
+}
+
+inline GateMatrix HHmat(ComplexValue v) {
+  return GateMatrix{{complex_zero, complex_zero, complex_zero, v}};
+}
+
 inline GateMatrix U3mat(fp lambda, fp phi, fp theta) {
   return GateMatrix{{{std::cos(theta / 2.), 0.},
                      {-std::cos(lambda) * std::sin(theta / 2.),
@@ -83,8 +94,8 @@ inline GateMatrix RXmat(fp lambda) {
 
 inline GateMatrix RYmat(fp lambda) {
   return GateMatrix{{{std::cos(lambda / 2.), 0.},
-                     {-std::sin(lambda / 2.), 0.},
                      {std::sin(lambda / 2.), 0.},
+                     {-std::sin(lambda / 2.), 0.},
                      {std::cos(lambda / 2.), 0.}}};
 }
 

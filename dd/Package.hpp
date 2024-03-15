@@ -72,7 +72,7 @@ namespace dd {
 
 
 		//==========================================我写的========================================
-		bool to_test = false;
+		bool to_test = true;
 
 		std::map<std::string, int> varOrder;
 
@@ -258,19 +258,22 @@ namespace dd {
 
 
 			std::vector<std::string> key_2_index;
+			std::vector<Index> ordered_index_set;
 			if (varOrder[var_out[0].key] < varOrder[var_out[1].key]) {
 				e_low[0] = e_temp[0];
 				e_low[1] = e_temp[1];
 				e_high[0] = e_temp[2];
 				e_high[1] = e_temp[3];
-				key_2_index = { var_out[0].key,var_out[1].key };
+				key_2_index = { var_out[1].key,var_out[0].key };
+				ordered_index_set = { var_out[1], var_out[0] };
 			}
 			else {
 				e_low[0] = e_temp[0];
 				e_low[1] = e_temp[2];
 				e_high[0] = e_temp[1];
 				e_high[1] = e_temp[3];
-				key_2_index = { var_out[1].key,var_out[0].key };
+				key_2_index = { var_out[0].key,var_out[1].key };
+				ordered_index_set = { var_out[0], var_out[1] };
 			}
 
 
@@ -294,7 +297,7 @@ namespace dd {
 				e[1] = high.e;
 				res.e = makeDDNode(1, e, false); ;
 			}
-			res.index_set = var_out;
+			res.index_set = ordered_index_set;
 			res.key_2_index = key_2_index;
 			return res;
 		}
@@ -327,61 +330,237 @@ namespace dd {
 			return res;
 		}
 
-		//template <class Node>
-		TDD cnot_2_TDD(std::vector<Index> var, int ca = 1) {
-
-
+		TDD cgate_2_TDD(std::vector<Index> var, std::string gate_type, bool debug = true) {
+			// New
 			TDD low, high, res;
 			std::vector<Edge<mNode>> e(2), e_low(2), e_high(2);
-			if (ca == 1) {
-				if (varOrder[var[0].key] > varOrder[var[2].key] && varOrder[var[0].key] > varOrder[var[3].key]) {
-					printf("CNOT case 1\n");
-					low = Matrix2TDD(Imat, { var[2] ,var[3] });
-					high = Matrix2TDD(Xmat, { var[2] ,var[3] });
-					e_low[0] = low.e;
-					e_low[1] = Edge<mNode>::zero;
-					e_high[0] = Edge<mNode>::zero;
-					e_high[1] = high.e;
-					e[0] = makeDDNode(2, e_low, false);
-					e[1] = makeDDNode(2, e_high, false);
-					res.e = makeDDNode(3, e, false);
-					res.index_set = { var[0],var[1],var[2],var[3] };
-					low.key_2_index.push_back(var[0].key);
-					res.key_2_index = low.key_2_index;
+
+			bool flipped = varOrder[var[0].key] > varOrder[var[2].key];
+
+			std::vector<int> offsetList = {0, 0, 0, 0};
+			for (int i = 0; i < offsetList.size(); i++) {
+				int offset = 0;
+
+				for (int j = 0; j < offsetList.size(); j++) {
+					if (varOrder[var[i].key] < varOrder[var[j].key]) {
+						offset++;
+					} 
 				}
-				else if (varOrder[var[2].key] > varOrder[var[0].key] && varOrder[var[2].key] > varOrder[var[3].key]) {
-					printf("CNOT case 2\n");
-					low = Matrix2TDD(Imat, { var[0] ,var[3] });
-					high = Matrix2TDD(Xmat, { var[0] ,var[3] });
-					e_low[0] = low.e;
-					e_low[1] = Edge<mNode>::zero;
-					e_high[0] = Edge<mNode>::zero;
-					e_high[1] = high.e;
-					e[0] = makeDDNode(2, e_low, false);
-					e[1] = makeDDNode(2, e_high, false);
-					res.e = makeDDNode(3, e, false);
-					res.index_set = { var[0],var[1],var[2],var[3] };
-					low.key_2_index.push_back(var[2].key);
-					res.key_2_index = low.key_2_index;
-				}
-				else {
-					printf("CNOT case 3\n");
-					low = Matrix2TDD(Imat, { var[0] ,var[2] });
-					high = Matrix2TDD(Xmat, { var[0] ,var[2] });
-					e_low[0] = low.e;
-					e_low[1] = Edge<mNode>::zero;
-					e_high[0] = Edge<mNode>::zero;
-					e_high[1] = high.e;
-					e[0] = makeDDNode(2, e_low, false);
-					e[1] = makeDDNode(2, e_high, false);
-					res.e = makeDDNode(3, e, false);
-					res.index_set = { var[0],var[1],var[2],var[3] };
-					low.key_2_index.push_back(var[3].key);
-					res.key_2_index = low.key_2_index;
-				}
-				return res;
+
+				offsetList[i] += offset;
 			}
+
+			std::vector<Index> orderedVars(4);
+			for (int i = 0; i < orderedVars.size(); i++) {
+				orderedVars[offsetList[i]] = var[i];
+			}
+
+			if (to_test) {
+				for (int i = 0; i < orderedVars.size(); i++) {
+					printf("OrderedVars: %s\n", orderedVars[i].key.c_str());
+				}
+			}
+
+			dd::GateMatrix high_gate = Xmat;
+			if (!gate_type.compare("z")) {
+				high_gate = Zmat;
+			} else if (!gate_type.compare("y")) {
+				high_gate = Ymat;
+			} else {
+				if (gate_type.compare("x")) {
+					printf("Gate type %s not supported, defaulting to cx gate", gate_type.c_str());
+				}
+			}
+
+			if (!flipped || !gate_type.compare("z")) {
+				if (to_test)
+					printf("Not flipped or cz\n");
+				// Create CX/CNOT from I and X gate
+				// Var[0] and var[1] must be the two least values according to varOrder
+				low = Matrix2TDD(Imat, { orderedVars[0] ,orderedVars[1] });
+				high = Matrix2TDD(high_gate, { orderedVars[0] ,orderedVars[1] });
+				
+				// Prepare the additional layer (identity-ish layer) between root node and I/X TDDs
+				e_low[0] = low.e;
+				e_low[1] = Edge<mNode>::zero;
+				e_high[0] = Edge<mNode>::zero;
+				e_high[1] = high.e;
+				e[0] = makeDDNode(2, e_low, false);
+				e[1] = makeDDNode(2, e_high, false);
+			} else if (!gate_type.compare("x")) {
+				if (to_test)
+					printf("Flipped cx\n");
+				// Create CX/CNOT from I and X gate
+				// Var[0] and var[1] must be the two least values according to varOrder
+				low = Matrix2TDD(LLmat(complex_one), { orderedVars[0] ,orderedVars[1] });
+				high = Matrix2TDD(HHmat(complex_one), { orderedVars[0] ,orderedVars[1] });
+				
+				// Prepare the additional layer (identity-ish layer) between root node and I/X TDDs
+				e_low[0] = low.e;
+				e_low[1] = high.e;
+				e_high[0] = high.e;
+				e_high[1] = low.e;
+				e[0] = makeDDNode(2, e_low, false);
+				e[1] = makeDDNode(2, e_high, false);
+			} else if (!gate_type.compare("y")) {
+				if (to_test)
+					printf("Flipped cy\n");
+				// Create CX/CNOT from I and X gate
+				// Var[0] and var[1] must be the two least values according to varOrder
+				low = Matrix2TDD(LLmat(complex_one), { orderedVars[0] ,orderedVars[1] });
+				high = Matrix2TDD(HHmat(complex_i), { orderedVars[0] ,orderedVars[1] });
+				
+				// Prepare the additional layer (identity-ish layer) between root node and I/X TDDs
+				e_low[0] = low.e;
+				e_low[1] = high.e;
+				high = Matrix2TDD(HHmat(complex_mi), { orderedVars[0] ,orderedVars[1] });
+				e_high[0] = high.e;
+				e_high[1] = low.e;
+				e[0] = makeDDNode(2, e_low, false);
+				e[1] = makeDDNode(2, e_high, false);
+			} 
+
+			// Create resulting CNOT node
+			res.e = makeDDNode(3, e, false);
+			res.index_set = { orderedVars[0],orderedVars[1],orderedVars[2],orderedVars[3] };
+
+			// Attach the two missing indices (again in increasing order according to varOrder)
+			low.key_2_index.push_back(orderedVars[2].key);
+			low.key_2_index.push_back(orderedVars[3].key);
+			res.key_2_index = low.key_2_index;
+
+			// for (int i = 0; i < res.index_set.size(); i++) {
+			// 	printf("Index set: %s\n", res.index_set[i].key.c_str());
+			// }
+
+			if (to_test) {
+				for (int i = 0; i < low.key_2_index.size(); i++) {
+					printf("K2Idx: %s\n", low.key_2_index[i].c_str());
+				}
+				printf("\n");
+			}
+
 			return res;
+		}
+
+		//template <class Node>
+		TDD cnot_2_TDD(std::vector<Index> var, int ca = 1, bool debug = false) {
+			// New
+			TDD low, high, res;
+			std::vector<Edge<mNode>> e(2), e_low(2), e_high(2);
+
+			std::vector<int> largerList = {0, 0, 0, 0};
+			for (int i = 0; i < largerList.size(); i++) {
+				int largerThan = 0;
+
+				for (int j = 0; j < largerList.size(); j++) {
+					if (varOrder[var[i].key] > varOrder[var[j].key]) {
+						largerThan++;
+					}
+				}
+
+				largerList[i] += largerThan;
+			}
+
+			std::vector<Index> orderedVars(4);
+			for (int i = 0; i < orderedVars.size(); i++) {
+				orderedVars[largerList[i]] = var[i];
+			}
+
+			if (to_test) {
+				for (int i = 0; i < orderedVars.size(); i++) {
+					printf("OrderedVars: %s\n", orderedVars[i].key.c_str());
+				}
+			}
+
+			// Create CX/CNOT from I and X gate
+			// Var[0] and var[1] must be the two least values according to varOrder
+			low = Matrix2TDD(Imat, { orderedVars[0] ,orderedVars[1] });
+			high = Matrix2TDD(Xmat, { orderedVars[0] ,orderedVars[1] });
+			
+			// Prepare the additional layer (identity-ish layer) between root node and I/X TDDs
+			e_low[0] = low.e;
+			e_low[1] = Edge<mNode>::zero;
+			e_high[0] = Edge<mNode>::zero;
+			e_high[1] = high.e;
+			e[0] = makeDDNode(2, e_low, false);
+			e[1] = makeDDNode(2, e_high, false);
+			
+			// Create resulting CNOT node
+			res.e = makeDDNode(3, e, false);
+			res.index_set = { orderedVars[0],orderedVars[1],orderedVars[2],orderedVars[3] };
+
+			// Attach the two missing indices (again in increasing order according to varOrder)
+			low.key_2_index.push_back(orderedVars[2].key);
+			low.key_2_index.push_back(orderedVars[3].key);
+			res.key_2_index = low.key_2_index;
+
+			if (to_test) {
+				for (int i = 0; i < low.key_2_index.size(); i++) {
+					printf("K2Idx: %s\n", low.key_2_index[i].c_str());
+				}
+				printf("\n");
+			}
+
+			return res;
+			// Old
+
+			// TDD low, high, res;
+			// std::vector<Edge<mNode>> e(2), e_low(2), e_high(2);
+			// if (ca == 1) {
+			// 	if (varOrder[var[0].key] < varOrder[var[2].key] && varOrder[var[0].key] < varOrder[var[3].key]) {
+			// 		printf("CNOT case 1\n\n");
+			// 		low = Matrix2TDD(Imat, { var[0] ,var[1] });
+			// 		high = Matrix2TDD(Xmat, { var[0] ,var[1] });
+			// 		e_low[0] = low.e;
+			// 		e_low[1] = Edge<mNode>::zero;
+			// 		e_high[0] = Edge<mNode>::zero;
+			// 		e_high[1] = high.e;
+			// 		e[0] = makeDDNode(2, e_low, false);
+			// 		e[1] = makeDDNode(2, e_high, false);
+			// 		res.e = makeDDNode(3, e, false);
+			// 		res.index_set = { var[0],var[1],var[2],var[3] };
+			// 		low.key_2_index.push_back(var[2].key);
+			// 		low.key_2_index.push_back(var[3].key);
+			// 		for (int i = 0; i < low.key_2_index.size(); i++) {
+			// 			printf("K2Idx: %s\n", low.key_2_index[i].c_str());
+			// 		}
+			// 		printf("\n");
+			// 		res.key_2_index = low.key_2_index;
+			// 	}
+			// 	else if (varOrder[var[2].key] > varOrder[var[0].key] && varOrder[var[2].key] > varOrder[var[3].key]) {
+			// 		printf("CNOT case 2\n");
+			// 		low = Matrix2TDD(Imat, { var[0] ,var[3] });
+			// 		high = Matrix2TDD(Xmat, { var[0] ,var[3] });
+			// 		e_low[0] = low.e;
+			// 		e_low[1] = Edge<mNode>::zero;
+			// 		e_high[0] = Edge<mNode>::zero;
+			// 		e_high[1] = high.e;
+			// 		e[0] = makeDDNode(2, e_low, false);
+			// 		e[1] = makeDDNode(2, e_high, false);
+			// 		res.e = makeDDNode(3, e, false);
+			// 		res.index_set = { var[0],var[1],var[2],var[3] };
+			// 		low.key_2_index.push_back(var[2].key);
+			// 		res.key_2_index = low.key_2_index;
+			// 	}
+			// 	else {
+			// 		printf("CNOT case 3\n");
+			// 		low = Matrix2TDD(Imat, { var[0] ,var[2] });
+			// 		high = Matrix2TDD(Xmat, { var[0] ,var[2] });
+			// 		e_low[0] = low.e;
+			// 		e_low[1] = Edge<mNode>::zero;
+			// 		e_high[0] = Edge<mNode>::zero;
+			// 		e_high[1] = high.e;
+			// 		e[0] = makeDDNode(2, e_low, false);
+			// 		e[1] = makeDDNode(2, e_high, false);
+			// 		res.e = makeDDNode(3, e, false);
+			// 		res.index_set = { var[0],var[1],var[2],var[3] };
+			// 		low.key_2_index.push_back(var[3].key);
+			// 		res.key_2_index = low.key_2_index;
+			// 	}
+			// 	return res;
+			// }
+			// return res;
 
 		}
 
@@ -786,14 +965,18 @@ namespace dd {
 			for (k = 0; k < var_cont_temp.size(); ++k) {
 				if (find(var_out_key.begin(), var_out_key.end(), var_cont_temp[k]) == var_out_key.end()) {
 					if (find(var_cont.begin(), var_cont.end(), var_cont_temp[k]) == var_cont.end()) {
-						printf("Var cont key %d: %s\n", k, var_cont_temp[k].c_str());
+						if (to_test)
+							printf("Var cont key %d: %s at %d\n", k, var_cont_temp[k].c_str(), varOrder[var_cont_temp[k]]);
 						var_cont.push_back(var_cont_temp[k]);
 					}
 				}
 			}
-			printf("\n");
-			for (k = 0; k < var_out_key.size(); k++) {
-				printf("Var out key %d: %s\n", k, var_out_key[k].c_str());
+
+			if (to_test) {
+				for (k = 0; k < var_out_key.size(); k++) {
+					printf("Var out key %d: %s at %d\n", k, var_out_key[k].c_str(), varOrder[var_out_key[k]]);
+				}
+				printf("\n");
 			}
 
 			if (to_test) {
@@ -844,13 +1027,13 @@ namespace dd {
 					break;
 				}
 
-				if (varOrder[tdd1.key_2_index[k1]] < varOrder[tdd2.key_2_index[k2]]) {
+				if (varOrder[tdd1.key_2_index[k1]] > varOrder[tdd2.key_2_index[k2]]) {
 					key_2_new_key1 = append_new_key(key_2_new_key1, new_key);
 					new_key_2_index.push_back(tdd1.key_2_index[k1]);
 					new_key++;
 					k1++;
 				}
-				else if (varOrder[tdd1.key_2_index[k1]] > varOrder[tdd2.key_2_index[k2]]) {
+				else if (varOrder[tdd1.key_2_index[k1]] < varOrder[tdd2.key_2_index[k2]]) {
 					key_2_new_key2 = append_new_key(key_2_new_key2, new_key);
 					new_key_2_index.push_back(tdd2.key_2_index[k2]);
 					new_key++;
@@ -887,25 +1070,22 @@ namespace dd {
 
 			res.index_set = var_out;
 			res.key_2_index = new_key_2_index;
-
 			if (to_test) {
-				std::cout << "TDD1: ";
-				for (const auto& element : tdd1.key_2_index) {
-					std::cout << element << " ";
+				printf("Res index set:\n");
+				for (k = 0; k < res.index_set.size(); k++) {
+					printf("    Var out key %d: %s\n", k, res.index_set[k].key.c_str());
 				}
-				std::cout << std::endl;
+				printf("\n");
 
-				std::cout << "TDD2: ";
-				for (const auto& element : tdd2.key_2_index) {
-					std::cout << element << " ";
+				printf("Res key2index:\n");
+				for (k = 0; k < res.key_2_index.size(); k++) {
+					printf("    Key2Index %d: %s\n", k, res.key_2_index[k].c_str());
 				}
-				std::cout << std::endl;
+				printf("\n");
+				printf("Starting cont2 now\n");
 			}
-
-
-
 			[[maybe_unused]] const auto before = cn.cacheCount();
-
+			
 			res.e = cont2(tdd1.e, tdd2.e, key_2_new_key1, key_2_new_key2, var_cont.size());
 
 			if (to_test) {
@@ -946,7 +1126,8 @@ namespace dd {
 			dd::mNode::isTerminal(r.p->e[0].p)
 		*/
 		bool isTDDIdentity(TDD tdd, bool lengthIndifferent, int expectedLength) {
-			printf("Initial expectedLength = %d\n", expectedLength);
+			if (to_test)
+				printf("Initial expectedLength = %d\n", expectedLength);
 			bool isTerminalNode = dd::mNode::isTerminal(tdd.e.p);
 			if (isTerminalNode) {
 				return lengthIndifferent || expectedLength == 0;

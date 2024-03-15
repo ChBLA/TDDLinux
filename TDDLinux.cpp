@@ -258,7 +258,7 @@ int save_data() {
 
 const char* contractCircuit(char* circuit_p, int qubits, char* plan_p, char* res_filename_p, bool debugging) {
   
-
+	to_test = debugging;
 	std::string plan(plan_p);
 	std::string circuit(circuit_p);
 	std::string res_filename(res_filename_p);
@@ -269,7 +269,6 @@ const char* contractCircuit(char* circuit_p, int qubits, char* plan_p, char* res
 	int gates = get_gates_num_from_circuit(circuit);
 	auto dd = std::make_unique<dd::Package<>>(2 * gates);
 
-	
 	std::tuple<dd::TDD, long> res = plannedContractionOnCircuit(circuit, actualPlan, dd, res_filename, debugging);
     
 	dd::export2Dot(std::get<0>(res).e, res_filename);
