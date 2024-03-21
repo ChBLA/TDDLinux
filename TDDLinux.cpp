@@ -256,7 +256,7 @@ int save_data() {
 // 	return (resIsIdentity + ";" + std::to_string(contTime)).data();
 // }
 
-const char* contractCircuit(char* circuit_p, int qubits, char* plan_p, char* res_filename_p, bool debugging) {
+const char* contractCircuit(char* circuit_p, int qubits, char* plan_p, char* res_filename_p, bool length_indifferent, bool debugging, bool draw_res, bool make_data, bool expect_equiv) {
   
 	to_test = debugging;
 	std::string plan(plan_p);
@@ -270,16 +270,9 @@ const char* contractCircuit(char* circuit_p, int qubits, char* plan_p, char* res
 	auto dd = std::make_unique<dd::Package<>>(2 * gates);
 
 	json result_data;
-	std::tuple<dd::TDD, long> res = plannedContractionOnCircuit(circuit, actualPlan, dd, res_filename, debugging, result_data);
+	std::tuple<dd::TDD, long> res = plannedContractionOnCircuit(circuit, actualPlan, dd, res_filename, debugging, make_data, result_data);
     result_data["name"] = res_filename;
 
-	// Pretty print json file
-	std::string folder_name = std::string("dataset/cpp_size_prediction/");
-	if (!std::filesystem::is_directory(folder_name) || !std::filesystem::exists(folder_name))
-		std::filesystem::create_directory(folder_name);
-	std::ofstream out_file(folder_name + res_filename + ".json");
-	out_file << std::setw(4) << result_data << std::endl;
-	out_file.close();
 
 	if (debugging) {
 		for (int j = 0; j < std::get<0>(res).gates.size(); j++) {
@@ -291,11 +284,20 @@ const char* contractCircuit(char* circuit_p, int qubits, char* plan_p, char* res
 		}
 	}
 
-	if (debugging)
+	if (debugging || draw_res)
 		dd::export2Dot(std::get<0>(res).e, res_filename);
 
-	bool resIsIdentity = dd->isTDDIdentity(std::get<0>(res), false, qubits);
+	bool resIsIdentity = dd->isTDDIdentity(std::get<0>(res), length_indifferent, qubits);
 
+	// Pretty print json file
+	if (make_data && (!expect_equiv || resIsIdentity)) {
+		std::string folder_name = std::string("dataset/cpp_size_prediction/");
+		if (!std::filesystem::is_directory(folder_name) || !std::filesystem::exists(folder_name))
+			std::filesystem::create_directory(folder_name);
+		std::ofstream out_file(folder_name + res_filename + ".json");
+		out_file << std::setw(4) << result_data << std::endl;
+		out_file.close();
+	}
 	//return (resIsIdentity + ";" + std::to_string(contTime)).data();
     
 
@@ -310,8 +312,8 @@ const char* contractCircuit(char* circuit_p, int qubits, char* plan_p, char* res
 
 
 extern "C" {
-	const char* pyContractCircuit(char* circuit_p, int qubits, char* plan_p, char* res_filename, bool debugging) {
-		return contractCircuit(circuit_p, qubits, plan_p, res_filename, debugging);
+	const char* pyContractCircuit(char* circuit_p, int qubits, char* plan_p, char* res_filename, bool length_indifferent, bool debugging, bool draw_res, bool make_data, bool expect_equiv) {
+		return contractCircuit(circuit_p, qubits, plan_p, res_filename, length_indifferent, debugging, draw_res, make_data, expect_equiv);
 	}
 
 	int testerFunc(int num) {

@@ -36,7 +36,7 @@ using json = nlohmann::json;
 constexpr long double PI = 3.14159265358979323846264338327950288419716939937510L;
 
 bool release = true;
-bool get_max_node = true;
+bool get_max_node = false;
 bool to_test = false;
 
 struct gate {
@@ -276,21 +276,21 @@ std::map<int, std::vector<dd::Index>> get_index(std::map<int, gate> gate_set, st
 			int tar_q = gate_set[k].qubits[1];
 			std::string cont_idx1 = "x";
 			cont_idx1 += to_string(con_q);
-			cont_idx1 += to_string(0);
+			cont_idx1 += "_";
 			cont_idx1 += to_string(qubit_idx[con_q]);
 			qubit_idx[con_q] += 1;
 			std::string cont_idx2 = "x";
 			cont_idx2 += to_string(con_q);
-			cont_idx2 += to_string(0);
+			cont_idx2 += "_";
 			cont_idx2 += to_string(qubit_idx[con_q]);
 			std::string targ_idx1 = "x";
 			targ_idx1 += to_string(tar_q);
-			targ_idx1 += to_string(0);
+			targ_idx1 += "_";
 			targ_idx1 += to_string(qubit_idx[tar_q]);
 			qubit_idx[tar_q] += 1;
 			std::string targ_idx2 = "x";
 			targ_idx2 += to_string(tar_q);
-			targ_idx2 += to_string(0);
+			targ_idx2 += "_";
 			targ_idx2 += to_string(qubit_idx[tar_q]);
 			Index_set[k] = { {cont_idx1,hyper_idx[cont_idx1]},{cont_idx2,hyper_idx[cont_idx2]},{targ_idx1,hyper_idx[targ_idx1]},{targ_idx2,hyper_idx[targ_idx2]} };
 			//std::cout << cont_idx<<" " << hyper_idx[cont_idx] << " " << cont_idx << " " << hyper_idx[cont_idx] + 1 << " " << cont_idx << " " << hyper_idx[cont_idx] + 2 << " " << targ_idx1 << " " << hyper_idx[targ_idx1] << " " << targ_idx2 << " " <<hyper_idx[targ_idx2] << " " << std::endl;
@@ -303,11 +303,11 @@ std::map<int, std::vector<dd::Index>> get_index(std::map<int, gate> gate_set, st
 			std::string targ_idx2 = "x";
 
 			targ_idx1 += to_string(tar_q);
-			targ_idx1 += to_string(0);
+			targ_idx1 += "_";
 			targ_idx1 += to_string(qubit_idx[tar_q]);
 			qubit_idx[tar_q] += 1;
 			targ_idx2 += to_string(tar_q);
-			targ_idx2 += to_string(0);
+			targ_idx2 += "_";
 			targ_idx2 += to_string(qubit_idx[tar_q]);
 			Index_set[k] = { {targ_idx1,hyper_idx[targ_idx1]},{targ_idx2,hyper_idx[targ_idx2]} };
 			if (false && (nam == "x" || nam == "h" || nam == "z" || nam == "s" || nam == "sdg" || nam == "t" || nam == "tdg" || (nam[0] == 'u' && nam[1] == '1') || (nam[0] == 'r' && nam[1] == 'z') || (nam[0] == 'r' && nam[1] == 'y'))) {
@@ -813,7 +813,22 @@ dd::TDD gateToTDD(std::string nam, std::vector<dd::Index> index_set, std::unique
 	return temp_tdd;
 }
 
-dd::TDD applyTDDs(dd::TDD tdd1, dd::TDD tdd2, std::unique_ptr<dd::Package<>>& dd, json& res_json) {
+dd::TDD applyTDDs(dd::TDD tdd1, dd::TDD tdd2, std::unique_ptr<dd::Package<>>& dd) {
+	if (release) {
+		auto tmp = dd->cont(tdd1, tdd2);
+		dd->incRef(tmp.e);
+		dd->decRef(tdd1.e);
+		tdd1 = tmp;
+		dd->garbageCollect();
+	}
+	else {
+		tdd1 = dd->cont(tdd1, tdd2);
+	}
+
+	return tdd1;
+}
+
+dd::TDD applyTDDsWithJSON(dd::TDD tdd1, dd::TDD tdd2, std::unique_ptr<dd::Package<>>& dd, json& res_json) {
 	std::vector<dd::GateDef> new_gates;
 	new_gates.reserve(tdd1.gates.size() + tdd2.gates.size());
 	new_gates.insert(new_gates.end(), tdd1.gates.begin(), tdd1.gates.end());
@@ -885,7 +900,7 @@ std::map<std::string, int> get_var_order() {
 		for (int k2 = gates_num; k2 >= 0; k2--) {
 			idx_nam = "x";
 			idx_nam += to_string(k);
-			idx_nam += to_string(0);
+			idx_nam += "_";
 			idx_nam += to_string(k2);
 			var[idx_nam] = order_num;
 			order_num -= 1;
@@ -1308,7 +1323,7 @@ int* Simulate_with_tdd(std::string path, std::string  file_name, std::unique_ptr
 
 
 std::tuple<dd::TDD, long> plannedContractionOnCircuit(std::string circuit, std::vector<std::tuple<int, int>> plan, 
-														std::unique_ptr<dd::Package<>>& dd, std::string res_filename, bool debugging, json& result_data) {
+														std::unique_ptr<dd::Package<>>& dd, std::string res_filename, bool debugging, bool make_dataset, json& result_data) {
 	// Load in circuit from file
 	std::map<int, gate> gate_set = import_circuit_from_string(circuit);
 	//printf("Successfully imported circuit\n");
@@ -1386,9 +1401,15 @@ std::tuple<dd::TDD, long> plannedContractionOnCircuit(std::string circuit, std::
 				dd::export2Dot(rightTDD.e, folder_name + res_filename + "_h" + std::to_string(k));
 			}
 
-			json res_json;
-			dd::TDD resTDD = applyTDDs(leftTDD, rightTDD, dd, res_json);
-			jsons[k] = res_json;
+			dd::TDD resTDD;
+			if (make_dataset) {
+				json res_json;
+				resTDD = applyTDDsWithJSON(leftTDD, rightTDD, dd, res_json);
+				jsons[k] = res_json;
+			} else {
+				resTDD = applyTDDs(leftTDD, rightTDD, dd);
+			}
+			
 			// std::tuple<dd::TDD, json> res = applyTDDs(leftTDD, rightTDD, dd);
 			// dd::TDD resTDD = std::get<0>(res);
 			// json resJson = std::get<1>(res);
@@ -1467,8 +1488,7 @@ dd::TDD plannedContractionOnCircuitFromFile(std::string path, std::vector<std::t
 			dd::TDD leftTDD = gateTDDs[leftIndex];
 			dd::TDD rightTDD = gateTDDs[rightIndex];
 			
-			json res_json;
-			dd::TDD resTDD = applyTDDs(leftTDD, rightTDD, dd, res_json);
+			dd::TDD resTDD = applyTDDs(leftTDD, rightTDD, dd);
 			// std::tuple<dd::TDD, json> res = applyTDDs(leftTDD, rightTDD, dd);
 			// dd::TDD resTDD = std::get<0>(res);
 

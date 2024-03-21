@@ -42,9 +42,9 @@ using Targets = std::vector<Qubit>;
 using BitString = std::bitset<128>;
 
 // floating-point type used throughout the library
-using fp = float;
+using fp = double;
 
-constexpr fp PARAMETER_TOLERANCE = 0.00000381469726563f;//1e-13;
+static inline fp PARAMETER_TOLERANCE = pow(2.0, -48.0);//0.00000381469726563f;//1e-13;
 
 static constexpr fp PI = static_cast<fp>(
     3.141592653589793238462643383279502884197169399375105820974L);

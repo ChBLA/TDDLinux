@@ -915,6 +915,29 @@ namespace dd {
 			}
 		}
 
+		void print_new_key_node_as_father(key_2_new_key_node* self) {
+			std::string key_str = "Key node: ";
+			key_2_new_key_node* curr_key = self;
+			while (self->next.size() > 0) {
+				assert(self->next.size() == 1);
+				for (const auto& [key, value] : self->next) {
+					key_str += std::to_string(key) + ", ";
+					curr_key = value;
+				}
+			}
+			printf("%s\n", key_str.c_str());
+		}
+
+		void print_new_key_node_as_son(key_2_new_key_node* self) {
+			std::string key_str = "";
+			key_2_new_key_node* curr_key = self;
+			while (curr_key->father) {
+				key_str = std::to_string(curr_key->new_key).c_str() + std::string(", ") + key_str;
+				curr_key = curr_key->father;
+			}
+			printf("Key node: %s\n", key_str.c_str());
+		}
+
 		template <class Edge> Edge T_add(const Edge& x, const Edge& y) {
 
 			return y;
@@ -1003,7 +1026,7 @@ namespace dd {
 			int new_key = 0;
 			int m1 = tdd1.key_2_index.size();
 			int m2 = tdd2.key_2_index.size();
-			int repeat_time = 1;
+			int repeat_time = 0;
 			float last_cont_idx = -2;
 
 			while (k1 < m1 || k2 < m2) {
@@ -1032,31 +1055,47 @@ namespace dd {
 					new_key_2_index.push_back(tdd1.key_2_index[k1]);
 					new_key++;
 					k1++;
+					repeat_time++;
 				}
 				else if (varOrder[tdd1.key_2_index[k1]] < varOrder[tdd2.key_2_index[k2]]) {
 					key_2_new_key2 = append_new_key(key_2_new_key2, new_key);
 					new_key_2_index.push_back(tdd2.key_2_index[k2]);
 					new_key++;
 					k2++;
+					repeat_time++;
 				}
 				else if (find(var_out_key.begin(), var_out_key.end(), tdd1.key_2_index[k1]) == var_out_key.end()) {
-					if (new_key - last_cont_idx <= 0.5) {
-						last_cont_idx = last_cont_idx + 1 / (3 * nqubits) * repeat_time;
-						repeat_time += 1;
-						key_2_new_key1 = append_new_key(key_2_new_key1, last_cont_idx);
-						key_2_new_key2 = append_new_key(key_2_new_key2, last_cont_idx);
-						k1++;
-						k2++;
-					}
-					else {
-						key_2_new_key1 = append_new_key(key_2_new_key1, new_key - 0.5);
-						key_2_new_key2 = append_new_key(key_2_new_key2, new_key - 0.5);
-						last_cont_idx = new_key - 0.5;
-						repeat_time = 1;
-						k1++;
-						k2++;
-					}
-
+					// if (new_key - last_cont_idx <= 0.5) {
+					// 	last_cont_idx = last_cont_idx + 1 / (3 * nqubits) * repeat_time;
+					// 	repeat_time += 1;
+					// 	key_2_new_key1 = append_new_key(key_2_new_key1, last_cont_idx);
+					// 	key_2_new_key2 = append_new_key(key_2_new_key2, last_cont_idx);
+					// 	k1++;
+					// 	k2++;
+					// }
+					// else {
+					// 	float intermediate_key = new_key - 0.5f + ((repeat_time + 1) * 0.0001f);
+					// 	key_2_new_key1 = append_new_key(key_2_new_key1, intermediate_key);
+					// 	key_2_new_key2 = append_new_key(key_2_new_key2, intermediate_key);
+					// 	last_cont_idx = intermediate_key;
+					// 	repeat_time += 1;
+					// 	k1++;
+					// 	k2++;
+					// }					
+					// else {
+					// 	key_2_new_key1 = append_new_key(key_2_new_key1, new_key - 0.5);
+					// 	key_2_new_key2 = append_new_key(key_2_new_key2, new_key - 0.5);
+					// 	last_cont_idx = new_key - 0.5;
+					// 	repeat_time += 1;
+					// 	k1++;
+					// 	k2++;
+					// }
+					float intermediate_key = new_key - 0.5f + ((repeat_time + 1) * 0.0001f);
+					key_2_new_key1 = append_new_key(key_2_new_key1, intermediate_key);
+					key_2_new_key2 = append_new_key(key_2_new_key2, intermediate_key);
+					k1++;
+					k2++;
+					repeat_time++;
 				}
 				else {
 					key_2_new_key1 = append_new_key(key_2_new_key1, new_key);
@@ -1065,7 +1104,13 @@ namespace dd {
 					new_key++;
 					k1++;
 					k2++;
+					repeat_time++;
 				}
+			}
+
+			if (to_test) {
+				print_new_key_node_as_son(key_2_new_key1);
+				print_new_key_node_as_son(key_2_new_key2);
 			}
 
 			res.index_set = var_out;
@@ -1343,27 +1388,7 @@ namespace dd {
 			ResultEdge e1{}, e2{}, r{};
 
 			if (newk1 > newk2) {
-				if (int(newk1 * 2) % 2 == 1) {
-					r = ResultEdge::zero;
-					ResultEdge etemp{};
-					for (int k = 0; k < x.p->e.size(); ++k) {
-						e1 = x.p->e[k];
-						e2 = yCopy;
-						etemp = cont2(e1, e2, temp_key_2_new_key1, temp_key_2_new_key2, var_num - 1);
-						if (!etemp.w.exactlyZero()) {
-							if (r != ResultEdge::zero) {
-								auto temp = r.w;
-								r = T_add2(r, etemp);
-								cn.returnToCache(temp);
-								cn.returnToCache(etemp.w);
-							}
-							else {
-								r = etemp;
-							}
-						}
-					}
-				}
-				else {
+				if (int(newk1 * 2) % 2 == 0) {
 					std::vector<ResultEdge> e;
 					for (int k = 0; k < x.p->e.size(); ++k) {
 						e1 = x.p->e[k];
@@ -1372,14 +1397,12 @@ namespace dd {
 					}
 					r = makeDDNode(Qubit(newk1), e, true);
 				}
-			}
-			else if (newk1 < newk2) {
-				if (int(newk2 * 2) % 2 == 1) {
+				else {
 					r = ResultEdge::zero;
 					ResultEdge etemp{};
-					for (int k = 0; k < y.p->e.size(); ++k) {
-						e1 = xCopy;
-						e2 = y.p->e[k];
+					for (int k = 0; k < x.p->e.size(); ++k) {
+						e1 = x.p->e[k];
+						e2 = yCopy;
 						etemp = cont2(e1, e2, temp_key_2_new_key1, temp_key_2_new_key2, var_num - 1);
 						if (!etemp.w.exactlyZero()) {
 							if (r != ResultEdge::zero) {
@@ -1394,7 +1417,9 @@ namespace dd {
 						}
 					}
 				}
-				else {
+			}
+			else if (newk1 < newk2) {
+				if (int(newk2 * 2) % 2 == 0) {
 					std::vector<ResultEdge> e;
 					for (int k = 0; k < y.p->e.size(); ++k) {
 						e1 = xCopy;
@@ -1403,10 +1428,39 @@ namespace dd {
 					}
 					r = makeDDNode(Qubit(newk2), e, true);
 				}
+				else {
+					r = ResultEdge::zero;
+					ResultEdge etemp{};
+					for (int k = 0; k < y.p->e.size(); ++k) {
+						e1 = xCopy;
+						e2 = y.p->e[k];
+						etemp = cont2(e1, e2, temp_key_2_new_key1, temp_key_2_new_key2, var_num - 1);
+						if (!etemp.w.exactlyZero()) {
+							if (r != ResultEdge::zero) {
+								auto temp = r.w;
+								r = T_add2(r, etemp);
+								cn.returnToCache(temp);
+								cn.returnToCache(etemp.w);
+							}
+							else {
+								r = etemp;
+							}
+						}
+					}
+				}
 
 			}
 			else {
-				if (int(newk2 * 2) % 2 == 1) {
+				if (int(newk2 * 2) % 2 == 0) {
+					std::vector<ResultEdge> e;
+					for (int k = 0; k < x.p->e.size(); ++k) {
+						e1 = x.p->e[k];
+						e2 = y.p->e[k];
+						e.push_back(cont2(e1, e2, temp_key_2_new_key1, temp_key_2_new_key2, var_num));
+					}
+					r = makeDDNode(Qubit(newk1), e, true);
+				}
+				else {
 					r = ResultEdge::zero;
 					ResultEdge etemp{};
 					for (int k = 0; k < x.p->e.size(); ++k) {
@@ -1425,15 +1479,6 @@ namespace dd {
 							}
 						}
 					}
-				}
-				else {
-					std::vector<ResultEdge> e;
-					for (int k = 0; k < x.p->e.size(); ++k) {
-						e1 = x.p->e[k];
-						e2 = y.p->e[k];
-						e.push_back(cont2(e1, e2, temp_key_2_new_key1, temp_key_2_new_key2, var_num));
-					}
-					r = makeDDNode(Qubit(newk1), e, true);
 				}
 			}
 
