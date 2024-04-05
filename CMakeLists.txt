@@ -4,6 +4,10 @@
 option(MAKE_SO "make the so" OFF)
 set(CMAKE_CXX_FLAGS "-Wall")
 
+
+# find_package(Torch REQUIRED)
+# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
+
 cmake_minimum_required (VERSION 3.8)
 
 # Enable Hot Reload for MSVC compilers if supported.
@@ -24,7 +28,7 @@ else()
 endif()
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
-  set_property(TARGET TDDLinux PROPERTY CXX_STANDARD 20)
+  set_property(TARGET TDDLinux PROPERTY CXX_STANDARD 17)
 endif()
 
 # TODO: Add tests and install targets if needed.
@@ -33,14 +37,17 @@ include_directories(${XTL_INCLUDE_DIRS})
 find_package(xtensor REQUIRED)
 include_directories(${XTENSOR_INCLUDE_DIRS})
 
+find_package(Torch REQUIRED)
+#include_directories(${TORCH_INCLUDE_DIRS})
+
 
 add_subdirectory(operations)
 add_subdirectory(parsers)
 add_subdirectory(dd)
 
+target_include_directories(${PROJECT_NAME} PUBLIC ${TORCH_INCLUDE_DIRS})
+target_link_libraries(${PROJECT_NAME} xtl xtensor ${TORCH_LIBRARIES})
 
-target_link_libraries(${PROJECT_NAME} xtl xtensor)
-
-target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_20)
+target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_17)
 
 

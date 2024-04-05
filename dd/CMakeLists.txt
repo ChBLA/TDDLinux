@@ -43,6 +43,6 @@ target_link_libraries(${CORE_TARGET_NAME}-dd xtl xtensor ${CORE_TARGET_NAME}-qc)
 
 
 
-target_compile_features(${CORE_TARGET_NAME}-dd PRIVATE cxx_std_20)
+target_compile_features(${CORE_TARGET_NAME}-dd PRIVATE cxx_std_17)
 
 #set(CORE_TARGETS ${CORE_TARGETS} ${CORE_TARGET_NAME}-dd PARENT_SCOPE)

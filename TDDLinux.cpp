@@ -6,6 +6,8 @@
 #include <iostream>
 #include <chrono>
 #include <ctime>
+#include <cmath>
+#include <cctype>
 #include <sys/time.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -80,7 +82,7 @@ int main124() {
 	return 0;
 }
 
-int main() {
+int main466() {
 	string path2 = "Benchmarks/";
 	string file_name = "test.qasm";
 	int n = get_qubits_num(path2 + file_name);
@@ -90,6 +92,11 @@ int main() {
 	dd::TDD res = plannedContractionOnCircuitFromFile(path2, plan, file_name, dd);
 	std::cout << "Done" << std::endl;
 
+}
+
+int main() {
+	//auto model = load_jit_module("models/model_0_jit.pt");
+	return 0;
 }
 
 // int main() {
@@ -305,8 +312,99 @@ const char* contractCircuit(char* circuit_p, int qubits, char* plan_p, char* res
 }
 
 
+const char* testNNModel(char* model_name_p, char* circuit_p, int qubits, char* plan_p) {
+	std::string plan_str(plan_p);
+	std::string circuit(circuit_p);
+	std::string model_name(model_name_p);
+	std::vector<std::tuple<int, int>> plan = get_actual_plan_from_string(plan_str);
 
+	int gates = get_gates_num_from_circuit(circuit);
+	
+	
+	// Prepare DD package
+	auto dd = std::make_unique<dd::Package<>>(2 * gates);
+	dd->varOrder = get_var_order();
+
+	// Make two TDDs
+	std::map<int, gate> gate_set = import_circuit_from_string(circuit);
+	std::map<int, std::vector<dd::Index>> Index_set = get_index(gate_set, dd->varOrder);
+	
+	std::vector<dd::TDD> gateTDDs(gate_set.size());
+	for (int i = 0; i < gateTDDs.size(); i++) {
+		//printf("Gate is: %s\n", gate_set[i].name.c_str());
+		gateTDDs[i] = gateToTDD(gate_set[i].name, Index_set[i], dd);
+		gateTDDs[i].pred_size = std::log2(gateSizes[gate_set[i].name]);
+		printf("Initial gate size of gate %s is %f\n", gate_set[i].name.c_str(), gateTDDs[i].pred_size);
+	}
+
+	// Load NN model
+	auto model = load_jit_module("models/" + model_name);
+
+	// Apply model with TDDs as input
+	std::vector<float> predictedSizes(plan.size());
+	for (int k = 0; k < plan.size(); k++) {
+		std::vector<dd::GateDef> new_gates;
+
+		int leftIndex = plan_offset[std::get<0>(plan[k])];
+		int rightIndex = plan_offset[std::get<1>(plan[k])];
+
+		dd::TDD leftTDD = gateTDDs[leftIndex];
+		dd::TDD rightTDD = gateTDDs[rightIndex];
+
+		new_gates.reserve(leftTDD.gates.size() + rightTDD.gates.size());
+		new_gates.insert(new_gates.end(), leftTDD.gates.begin(), leftTDD.gates.end());
+		new_gates.insert(new_gates.end(), rightTDD.gates.begin(), rightTDD.gates.end());
+
+		float pred_size = applyModel(model, leftTDD, rightTDD, true, dd);
+		predictedSizes[k] = pred_size;
+
+		dd::TDD resTDD = rightTDD;
+		resTDD.pred_size = pred_size;
+		resTDD.gates = new_gates;
+		gateTDDs[rightIndex] = resTDD;
+	}
+
+	std::string resString = "";
+	for (int i = 0; i < predictedSizes.size(); i++)
+		resString += std::to_string(predictedSizes[i]) + std::string(";");
+
+	return resString.data();
+}
    
+
+const char* testGraph(char* model_name_p, char* circuit_p, int qubits, char* plan_p, char* pyEdges_p) {
+	std::string plan_str(plan_p);
+	std::string circuit(circuit_p);
+	std::string pyEdges(pyEdges_p);
+	std::string model_name(model_name_p);
+	std::vector<std::tuple<int, int>> plan = get_actual_plan_from_string(plan_str);
+	std::vector<std::tuple<int, int>> edges = get_actual_plan_from_string(pyEdges);
+
+	int gates = get_gates_num_from_circuit(circuit);
+	
+	
+	// Prepare DD package
+	auto dd = std::make_unique<dd::Package<>>(2 * gates);
+	dd->varOrder = get_var_order();
+
+	// Make two TDDs
+	std::map<int, gate> gate_set = import_circuit_from_string(circuit);
+	std::map<int, std::vector<dd::Index>> Index_set = get_index(gate_set, dd->varOrder);
+	
+	// Load NN model
+	auto model = load_jit_module("models/" + model_name);
+
+	// Make graph
+	Graph g = initialiseGraph(gate_set, Index_set, edges, model);
+	std::vector<std::tuple<int, int>> greedy_plan = GreedyPlan(gate_set, Index_set, edges, model);
+	printf("Plan is:\n");
+	for (int i = 0; i < greedy_plan.size(); i++) {
+		printf("\tStep %d: (%d, %d)\n", i, std::get<0>(greedy_plan[i]), std::get<1>(greedy_plan[i]));
+	}
+	//g.contractEdge(std::stoi(std::to_string(std::get<0>(edges[3])) + std::to_string(std::get<1>(edges[3]))));
+
+	return "resString.data()";
+}
 
 
 
@@ -314,6 +412,14 @@ const char* contractCircuit(char* circuit_p, int qubits, char* plan_p, char* res
 extern "C" {
 	const char* pyContractCircuit(char* circuit_p, int qubits, char* plan_p, char* res_filename, bool length_indifferent, bool debugging, bool draw_res, bool make_data, bool expect_equiv) {
 		return contractCircuit(circuit_p, qubits, plan_p, res_filename, length_indifferent, debugging, draw_res, make_data, expect_equiv);
+	}
+
+	const char* pyTestNNModel(char* model_name_p, char* circuit_p, int qubits, char* plan_p) {
+		return testNNModel(model_name_p, circuit_p, qubits, plan_p);
+	}
+
+	const char* pyTestGraph(char* model_name_p, char* circuit_p, int qubits, char* plan, char* pyEdges) {
+		return testGraph(model_name_p, circuit_p, qubits, plan, pyEdges);
 	}
 
 	int testerFunc(int num) {

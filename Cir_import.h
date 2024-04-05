@@ -38,6 +38,8 @@ constexpr long double PI = 3.14159265358979323846264338327950288419716939937510L
 bool release = true;
 bool get_max_node = false;
 bool to_test = false;
+int split_gates_count = 0;
+std::map<int, int> plan_offset;
 
 struct gate {
 	std::string name;
@@ -198,7 +200,6 @@ std::map<int, gate> import_circuit_from_string(std::string circuit) {
 	gates_num = 0;
 
 	std::map<int, gate> gate_set;
-
 	std::stringstream infile(circuit);
 
 	std::string line;
@@ -210,7 +211,8 @@ std::map<int, gate> import_circuit_from_string(std::string circuit) {
 	{
 		gate temp_gate;
 
-		vector<std::string> g = split(line, " ");
+		vector<std::string> sep = split(line, "#");
+		vector<std::string> g = split(sep[1], " ");
 		smatch result;
 
 		temp_gate.name = g[0];
@@ -229,8 +231,22 @@ std::map<int, gate> import_circuit_from_string(std::string circuit) {
 				temp_gate.qubits[1] = stoi(result[2]);
 			}
 
-		}
-		else {
+		} else if (g[0] == "cx_c" || g[0] == "cy_c" || g[0] == "cz_c" || g[0] == "cx_t" || g[0] == "cy_t" || g[0] == "cz_t") {
+			regex pattern("q\\[(\\d+)\\], ?q\\[(\\d+)\\];");
+			if (regex_match(g[1], result, pattern))
+			{
+				if (stoi(result[1]) > qubits_num) {
+					qubits_num = stoi(result[1]);
+				}
+				if (stoi(result[2]) > qubits_num) {
+					qubits_num = stoi(result[2]);
+				}
+				temp_gate.qubits[0] = stoi(result[1]);
+				temp_gate.qubits[1] = stoi(result[2]);
+			}
+			if (g[0] == "cx_c" || g[0] == "cy_c" || g[0] == "cz_c")
+				split_gates_count++;
+		} else {
 			regex pattern("q\\[(\\d+)\\];");
 			if (regex_match(g[1], result, pattern))
 			{
@@ -242,6 +258,8 @@ std::map<int, gate> import_circuit_from_string(std::string circuit) {
 		}
 
 		gate_set[gates_num] = temp_gate;
+		plan_offset[stoi(sep[0])] = gates_num;
+
 		gates_num++;
 	}
 	
@@ -263,7 +281,7 @@ std::map<int, std::vector<dd::Index>> get_index(std::map<int, gate> gate_set, st
 
 
 	int* qubit_idx = new   int[qubits_num]();
-
+	int* between_idx = new int[qubits_num]();
 
 	for (int k = 0; k < gates_num; k++)
 	{
@@ -296,8 +314,48 @@ std::map<int, std::vector<dd::Index>> get_index(std::map<int, gate> gate_set, st
 			//std::cout << cont_idx<<" " << hyper_idx[cont_idx] << " " << cont_idx << " " << hyper_idx[cont_idx] + 1 << " " << cont_idx << " " << hyper_idx[cont_idx] + 2 << " " << targ_idx1 << " " << hyper_idx[targ_idx1] << " " << targ_idx2 << " " <<hyper_idx[targ_idx2] << " " << std::endl;
 			//hyper_idx[cont_idx] += 2;
 
-		}
-		else {
+		} else if (nam == "cx_c" || nam == "cy_c" || nam == "cz_c") {
+			int con_q = gate_set[k].qubits[0];
+			int tar_q = gate_set[k].qubits[1];
+			std::string cont_idx1 = "x";
+			cont_idx1 += to_string(con_q);
+			cont_idx1 += "_";
+			cont_idx1 += to_string(qubit_idx[con_q]);
+			qubit_idx[con_q] += 1;
+			std::string cont_idx2 = "x";
+			cont_idx2 += to_string(con_q);
+			cont_idx2 += "_";
+			cont_idx2 += to_string(qubit_idx[con_q]);
+			
+			int bet_q = con_q > tar_q ? con_q : tar_q;
+			std::string between_edge = "p";
+			between_edge += to_string(bet_q);
+			between_edge += "_";
+			between_edge += to_string(between_idx[bet_q]);
+
+			Index_set[k] = { {cont_idx1,hyper_idx[cont_idx1]}, {cont_idx2,hyper_idx[cont_idx2]}, {between_edge,0} };
+		} else if (nam == "cx_t" || nam == "cy_t" || nam == "cz_t") {
+			int con_q = gate_set[k].qubits[0];
+			int tar_q = gate_set[k].qubits[1];
+			std::string targ_idx1 = "x";
+			targ_idx1 += to_string(tar_q);
+			targ_idx1 += "_";
+			targ_idx1 += to_string(qubit_idx[tar_q]);
+			qubit_idx[tar_q] += 1;
+			std::string targ_idx2 = "x";
+			targ_idx2 += to_string(tar_q);
+			targ_idx2 += "_";
+			targ_idx2 += to_string(qubit_idx[tar_q]);
+			
+			int bet_q = con_q > tar_q ? con_q : tar_q;
+			std::string between_edge = "p";
+			between_edge += to_string(bet_q);
+			between_edge += "_";
+			between_edge += to_string(between_idx[bet_q]);
+			between_idx[bet_q] += 1;
+
+			Index_set[k] = { {targ_idx1,hyper_idx[targ_idx1]}, {targ_idx2,hyper_idx[targ_idx2]}, {between_edge,0} };
+		} else {
 			int tar_q = gate_set[k].qubits[0];
 			std::string targ_idx1 = "x";
 			std::string targ_idx2 = "x";
@@ -311,7 +369,7 @@ std::map<int, std::vector<dd::Index>> get_index(std::map<int, gate> gate_set, st
 			targ_idx2 += to_string(qubit_idx[tar_q]);
 			Index_set[k] = { {targ_idx1,hyper_idx[targ_idx1]},{targ_idx2,hyper_idx[targ_idx2]} };
 			if (false && (nam == "x" || nam == "h" || nam == "z" || nam == "s" || nam == "sdg" || nam == "t" || nam == "tdg" || (nam[0] == 'u' && nam[1] == '1') || (nam[0] == 'r' && nam[1] == 'z') || (nam[0] == 'r' && nam[1] == 'y'))) {
-				Index_set[k] = { {targ_idx1,hyper_idx[targ_idx1]},{targ_idx1,hyper_idx[targ_idx1] + 1} };
+				Index_set[k] = { {targ_idx1,hyper_idx[targ_idx1]},{targ_idx1,((short)(hyper_idx[targ_idx1] + 1))} };
 				qubit_idx[tar_q] -= 1;
 				hyper_idx[targ_idx1] += 1;
 			}
@@ -663,6 +721,15 @@ dd::TDD gateToTDD(std::string nam, std::vector<dd::Index> index_set, std::unique
 	} else if (nam == "cz") {
 		//temp_tdd = dd->cz_2_TDD(index_set, 1);
 		temp_tdd = dd->cgate_2_TDD(index_set, "z");
+	} else if (nam == "cx_c" || nam == "cx_t") {
+		//temp_tdd = dd->cz_2_TDD(index_set, 1);
+		temp_tdd = dd->split_cgate_2_TDD(index_set, "x", nam == "cx_c");
+	} else if (nam == "cy_c" || nam == "cy_t") {
+		//temp_tdd = dd->cz_2_TDD(index_set, 1);
+		temp_tdd = dd->split_cgate_2_TDD(index_set, "y", nam == "cy_c");
+	} else if (nam == "cz_c" || nam == "cz_t") {
+		//temp_tdd = dd->cz_2_TDD(index_set, 1);
+		temp_tdd = dd->split_cgate_2_TDD(index_set, "z", nam == "cz_c");
 	} else {
 		switch (gate_type[nam]) {
 		case 1:
@@ -906,6 +973,17 @@ std::map<std::string, int> get_var_order() {
 			order_num -= 1;
 			//cout << idx_nam << endl;
 		}
+		if (k != 0) {
+			for (int k3 = split_gates_count; k3 >= 0; k3--) {
+				idx_nam = "p";
+				idx_nam += to_string(k);
+				idx_nam += "_";
+				idx_nam += to_string(k3);
+				var[idx_nam] = order_num;
+				order_num -= 1;
+			}
+		}
+
 		idx_nam = "x";
 		idx_nam += to_string(k);
 		var[idx_nam] = order_num;
@@ -1177,7 +1255,7 @@ int get_qubits_num_from_circuit(std::string circuit) {
 			regex pattern("qreg q\\[(\\d+)\\];");
 			if (regex_match(qubit_str, result, pattern))
 			{
-				printf("I got to the second if with %s\n", result.str(1));
+				//printf("I got to the second if with %s\n", result.str(1));
 				return stoi(result[1]);
 			}	
 		}
@@ -1382,53 +1460,50 @@ std::tuple<dd::TDD, long> plannedContractionOnCircuit(std::string circuit, std::
 	int current_step = 1;
 	std::vector<json> jsons(plan.size());
 	for (int k = 0; k < plan.size(); k++) {
-		{
-			// if (((double) k) / ((double) plan.size()) * 10 > current_step) {
-			// 	printf("Done with: %d of %ld\n", k, plan.size());
-			// 	current_step++;
-			// }
-			std::string folder_name = std::string("cpp_debugging/contraction_") + std::to_string(k) + "/";
+		// if (((double) k) / ((double) plan.size()) * 10 > current_step) {
+		// 	printf("Done with: %d of %ld\n", k, plan.size());
+		// 	current_step++;
+		// }
+		std::string folder_name = std::string("cpp_debugging/contraction_") + std::to_string(k) + "/";
 
-			int leftIndex = std::get<0>(plan[k]);
-			int rightIndex = std::get<1>(plan[k]);
+		int leftIndex = plan_offset[std::get<0>(plan[k])];
+		int rightIndex = plan_offset[std::get<1>(plan[k])];
 
-			dd::TDD leftTDD = gateTDDs[leftIndex];
-			dd::TDD rightTDD = gateTDDs[rightIndex];
+		dd::TDD leftTDD = gateTDDs[leftIndex];
+		dd::TDD rightTDD = gateTDDs[rightIndex];
 
-			if (debugging) {
-				std::filesystem::create_directory(folder_name);
-				dd::export2Dot(leftTDD.e, folder_name + res_filename + "_v" + std::to_string(k));
-				dd::export2Dot(rightTDD.e, folder_name + res_filename + "_h" + std::to_string(k));
+		if (debugging) {
+			std::filesystem::create_directory(folder_name);
+			dd::export2Dot(leftTDD.e, folder_name + res_filename + "_v" + std::to_string(k));
+			dd::export2Dot(rightTDD.e, folder_name + res_filename + "_h" + std::to_string(k));
+		}
+
+		dd::TDD resTDD;
+		if (make_dataset) {
+			json res_json;
+			resTDD = applyTDDsWithJSON(leftTDD, rightTDD, dd, res_json);
+			jsons[k] = res_json;
+		} else {
+			resTDD = applyTDDs(leftTDD, rightTDD, dd);
+		}
+		
+		// std::tuple<dd::TDD, json> res = applyTDDs(leftTDD, rightTDD, dd);
+		// dd::TDD resTDD = std::get<0>(res);
+		// json resJson = std::get<1>(res);
+		
+		
+
+
+		if (get_max_node) {
+			node_num_max = dd->size(resTDD.e);
+			if (node_num_max > nodes[0]) {
+				nodes[0] = node_num_max;
 			}
+		}
 
-			dd::TDD resTDD;
-			if (make_dataset) {
-				json res_json;
-				resTDD = applyTDDsWithJSON(leftTDD, rightTDD, dd, res_json);
-				jsons[k] = res_json;
-			} else {
-				resTDD = applyTDDs(leftTDD, rightTDD, dd);
-			}
-			
-			// std::tuple<dd::TDD, json> res = applyTDDs(leftTDD, rightTDD, dd);
-			// dd::TDD resTDD = std::get<0>(res);
-			// json resJson = std::get<1>(res);
-			
-			
-
-
-			if (get_max_node) {
-				node_num_max = dd->size(resTDD.e);
-				if (node_num_max > nodes[0]) {
-					nodes[0] = node_num_max;
-				}
-			}
-
-			gateTDDs[rightIndex] = resTDD;
-			if (debugging) {
-				dd::export2Dot(resTDD.e, folder_name + res_filename + "_r" + std::to_string(k));
-			}
-
+		gateTDDs[rightIndex] = resTDD;
+		if (debugging) {
+			dd::export2Dot(resTDD.e, folder_name + res_filename + "_r" + std::to_string(k));
 		}
 	}
 	gettimeofday(&end, NULL);
@@ -1442,13 +1517,14 @@ std::tuple<dd::TDD, long> plannedContractionOnCircuit(std::string circuit, std::
 	if (debugging)
     	printf("Elapsed time: %ld milliseconds\n", mtime);
 
-	result_data["data"] = jsons;
+	if (make_dataset)
+		result_data["data"] = jsons;
 	// // Pretty print json file
 	// std::ofstream out_file(folder_name + res_filename + "_r" + std::to_string(k) + ".json");
 	// out_file << std::setw(4) << res_json << std::endl;
 	// out_file.close();
 
-	return {gateTDDs[std::get<1>(plan[plan.size() - 1])], mtime};
+	return {gateTDDs[plan_offset[std::get<1>(plan[plan.size() - 1])]], mtime};
 }
 
 dd::TDD plannedContractionOnCircuitFromFile(std::string path, std::vector<std::tuple<int, int>> plan, std::string file_name, std::unique_ptr<dd::Package<>>& dd) {

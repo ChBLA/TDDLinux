@@ -27,6 +27,6 @@ add_library(
 
 #target_link_libraries(${CORE_TARGET_NAME}-qc ${CORE_TARGET_NAME}-dd)
 
-target_compile_features(${CORE_TARGET_NAME}-qc PRIVATE cxx_std_20)
+target_compile_features(${CORE_TARGET_NAME}-qc PRIVATE cxx_std_17)
 
 #set(CORE_TARGETS ${CORE_TARGETS} ${CORE_TARGET_NAME}-dd PARENT_SCOPE)

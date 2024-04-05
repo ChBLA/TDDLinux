@@ -443,6 +443,90 @@ namespace dd {
 			return res;
 		}
 
+		TDD split_cgate_2_TDD(std::vector<Index> var, std::string gate_type, bool is_control, bool debug = true) {
+			// New
+			TDD low, high, res;
+			std::vector<Edge<mNode>> e(2);
+
+			bool flipped = (varOrder[var[0].key] > varOrder[var[2].key] && is_control) || (varOrder[var[0].key] < varOrder[var[2].key] && !is_control);
+
+			std::vector<int> offsetList = {0, 0, 0};
+			for (int i = 0; i < offsetList.size(); i++) {
+				int offset = 0;
+
+				for (int j = 0; j < offsetList.size(); j++) {
+					if (varOrder[var[i].key] < varOrder[var[j].key]) {
+						offset++;
+					} 
+				}
+
+				offsetList[i] += offset;
+			}
+
+			std::vector<Index> orderedVars(3);
+			for (int i = 0; i < orderedVars.size(); i++) {
+				orderedVars[offsetList[i]] = var[i];
+			}
+
+			if (to_test) {
+				for (int i = 0; i < orderedVars.size(); i++) {
+					printf("OrderedVars: %s\n", orderedVars[i].key.c_str());
+				}
+			}
+
+			dd::GateMatrix high_gate = Xmat;
+			if (!gate_type.compare("z")) {
+				high_gate = Zmat;
+			} else if (!gate_type.compare("y")) {
+				high_gate = Ymat;
+			} else {
+				if (gate_type.compare("x")) {
+					printf("Gate type %s not supported, defaulting to cx gate", gate_type.c_str());
+				}
+			}
+
+			if (flipped != is_control) {
+				if (to_test)
+					printf("Not flipped\n");
+				// Create CX/CNOT from I and X gate
+				// Var[0] and var[1] must be the two least values according to varOrder
+				low = Matrix2TDD(LLmat(complex_one), { orderedVars[0] ,orderedVars[1] });
+				high = Matrix2TDD(HHmat(complex_one), { orderedVars[0] ,orderedVars[1] });
+				
+				// Prepare the additional layer (identity-ish layer) between root node and I/X TDDs
+				e[0] = low.e;
+				e[1] = high.e;
+			} else {
+				low = Matrix2TDD(Imat, { orderedVars[0] ,orderedVars[1] });
+				high = Matrix2TDD(high_gate, { orderedVars[0] ,orderedVars[1] });
+				
+				// Prepare the additional layer (identity-ish layer) between root node and I/X TDDs
+				e[0] = low.e;
+				e[1] = high.e;
+			}
+
+			// Create resulting CNOT node
+			res.e = makeDDNode(2, e, false);
+			res.index_set = { orderedVars[0],orderedVars[1],orderedVars[2] };
+
+			// Attach the two missing indices (again in increasing order according to varOrder)
+			low.key_2_index.push_back(orderedVars[2].key);
+			res.key_2_index = low.key_2_index;
+
+			// for (int i = 0; i < res.index_set.size(); i++) {
+			// 	printf("Index set: %s\n", res.index_set[i].key.c_str());
+			// }
+
+			if (to_test) {
+				for (int i = 0; i < low.key_2_index.size(); i++) {
+					printf("K2Idx: %s\n", low.key_2_index[i].c_str());
+				}
+				printf("\n");
+			}
+
+			return res;
+		}
+
 		//template <class Node>
 		TDD cnot_2_TDD(std::vector<Index> var, int ca = 1, bool debug = false) {
 			// New
@@ -909,7 +993,7 @@ namespace dd {
 				return self->next[new_key];
 			}
 			else {
-				self->next[new_key] = new key_2_new_key_node{ self->level + 1, new_key, {}, self };
+				self->next[new_key] = new key_2_new_key_node{ ((short)(self->level + 1)), new_key, {}, self };
 
 				return self->next[new_key];
 			}
