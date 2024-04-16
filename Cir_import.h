@@ -3,9 +3,9 @@
 //#include "DDpackage.h"
 //#include "DDcomplex.h"
 
-#include "dd/Package.hpp"
-#include "dd/Export.hpp"
+
 #include "nlohmann/json.hpp"
+#include "Planning.hpp"
 
 #include <unordered_set>
 #include <vector>
@@ -25,9 +25,11 @@
 #include <chrono>
 #include <ctime>
 #include <sys/time.h>
-#include <stdio.h>
+
 #include <unistd.h>
 #include <filesystem>
+#include <thread>
+
 
 using namespace std;
 using json = nlohmann::json;
@@ -39,13 +41,9 @@ bool release = true;
 bool get_max_node = false;
 bool to_test = false;
 int split_gates_count = 0;
-std::map<int, int> plan_offset;
 
-struct gate {
-	std::string name;
-	short int qubits[2];
-	//std::vector<dd::Index> index_set;
-};
+
+
 
 int qubits_num = 0;
 int gates_num = 0;
@@ -1526,6 +1524,173 @@ std::tuple<dd::TDD, long> plannedContractionOnCircuit(std::string circuit, std::
 
 	return {gateTDDs[plan_offset[std::get<1>(plan[plan.size() - 1])]], mtime};
 }
+
+std::tuple<dd::TDD, long> plannedContractionOnline(std::string circuit, std::vector<std::tuple<int, int>> pyEdges, torch::jit::script::Module model,
+														std::unique_ptr<dd::Package<>>& dd) {
+	// Load in circuit from file
+	std::map<int, gate> gate_set = import_circuit_from_string(circuit);
+
+	int* nodes = new int[2];
+	nodes[0] = 0;
+	nodes[1] = 0;
+
+	// Prepare TDD env (var order ...)
+	dd->varOrder = get_var_order();
+	dd->to_test = false;
+
+	std::map<int, std::vector<dd::Index>> Index_set = get_index(gate_set, dd->varOrder);
+	dd::TDD tdd = { dd::Edge<dd::mNode>::one ,{} };
+
+	if (release) {
+		dd->incRef(tdd.e);
+	}
+
+	int node_num_max = 0;
+
+	// Prepare Gate TDDs
+	std::vector<dd::TDD> gateTDDs(gate_set.size());
+	for (int i = 0; i < gateTDDs.size(); i++) {
+		//printf("Gate is: %s\n", gate_set[i].name.c_str());
+		gateTDDs[i] = gateToTDD(gate_set[i].name, Index_set[i], dd);
+	}
+
+	struct timeval start, end;
+    long mtime, seconds, useconds;  
+	gettimeofday(&start, NULL);
+
+	// Apply plan
+
+	int performedSteps = 0;
+	std::vector<std::tuple<int, int, float>> performed = {};
+	std::vector<std::tuple<int, int, float>> planned = {};
+
+	Graph graph = initialiseGraph(gate_set, Index_set, pyEdges, model);
+
+	// Spawn planner process
+	thread planner(OnlineRGreedy, graph, &planned, &performed);
+
+	//std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+
+	int totalSteps = graph.edges.size() - 1;
+	while (performedSteps < totalSteps) {
+		if (planned.size() > performed.size()) {
+			printf("Planned size: %d", planned.size());
+			auto nextStep = planned[performed.size()];
+
+			int leftIndex = plan_offset[std::get<0>(nextStep)];
+			int rightIndex = plan_offset[std::get<1>(nextStep)];
+
+			dd::TDD leftTDD = gateTDDs[leftIndex];
+			dd::TDD rightTDD = gateTDDs[rightIndex];
+			dd::TDD resTDD = applyTDDs(leftTDD, rightTDD, dd);
+
+			float logSize = std::log2(dd->size(resTDD.e));
+			gateTDDs[rightIndex] = resTDD;
+
+			
+			performed.push_back({std::get<0>(nextStep), std::get<1>(nextStep), logSize});
+			performedSteps++;
+		}
+	}
+	planner.join();
+
+	gettimeofday(&end, NULL);
+	seconds  = end.tv_sec  - start.tv_sec;
+    useconds = end.tv_usec - start.tv_usec;
+    mtime = ((seconds) * 1000 + useconds/1000.0) + 0.5;
+
+	return {gateTDDs[plan_offset[std::get<1>(performed[performed.size() - 1])]], mtime};
+}
+
+
+std::tuple<dd::TDD, long> plannedContractionWindowedNNGreedy(std::string circuit, std::vector<std::tuple<int, int>> pyEdges, torch::jit::script::Module model,
+														int windowSize, std::unique_ptr<dd::Package<>>& dd, json& result_data) {
+	struct timeval start, end;
+	gettimeofday(&start, NULL);
+	
+	// Load in circuit from file
+	std::map<int, gate> gate_set = import_circuit_from_string(circuit);
+
+	int* nodes = new int[2];
+	nodes[0] = 0;
+	nodes[1] = 0;
+
+	// Prepare TDD env (var order ...)
+	dd->varOrder = get_var_order();
+	dd->to_test = false;
+
+	std::map<int, std::vector<dd::Index>> Index_set = get_index(gate_set, dd->varOrder);
+	dd::TDD tdd = { dd::Edge<dd::mNode>::one ,{} };
+
+	if (release) {
+		dd->incRef(tdd.e);
+	}
+
+	int node_num_max = 0;
+
+	// Prepare Gate TDDs
+	std::vector<dd::TDD> gateTDDs(gate_set.size());
+	for (int i = 0; i < gateTDDs.size(); i++) {
+		//printf("Gate is: %s\n", gate_set[i].name.c_str());
+		gateTDDs[i] = gateToTDD(gate_set[i].name, Index_set[i], dd);
+	}
+
+	gettimeofday(&start, NULL);
+
+	// Apply plan
+
+	int performedSteps = 0;
+	std::vector<std::tuple<int, int, float>> planned = {};
+	std::vector<std::tuple<int, int, float>> performed = {};
+
+	Graph graph = initialiseGraph(gate_set, Index_set, pyEdges, model);
+
+	//printf("Starting windowed contraction\n");
+
+	std::vector<std::tuple<int, int, float>> lockedWindow = NextWindowNNGreedy(graph, {}, windowSize);
+	
+	//std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+
+	while (lockedWindow.size()) {
+		// Update contracted edges
+		//printf("Recomputing graph with %d\n", graph.edgeCount());
+		recomputeGraphWithActualValues(graph, performed);
+		//printf("Done recomputing graph with %d\n", graph.edgeCount());
+		// Plan next window
+		//printf("Plan next window\n");
+		planned = lockedWindow;
+		lockedWindow = NextWindowNNGreedy(graph, lockedWindow, windowSize);
+
+		// STARTING CONTRACTION
+
+		//printf("Resize vector\n");
+		performed.resize(0);
+		// Contract next window
+		//printf("Contract window\n");
+		for (int i = 0; i < planned.size(); i++) {
+			auto nextStep = planned[i];
+
+			int leftIndex = plan_offset[std::get<0>(nextStep)];
+			int rightIndex = plan_offset[std::get<1>(nextStep)];
+
+			dd::TDD leftTDD = gateTDDs[leftIndex];
+			dd::TDD rightTDD = gateTDDs[rightIndex];
+			dd::TDD resTDD = applyTDDs(leftTDD, rightTDD, dd);
+
+			float logSize = std::log2(dd->size(resTDD.e));
+			gateTDDs[rightIndex] = resTDD;
+
+			performed.push_back({std::get<0>(nextStep), std::get<1>(nextStep), logSize});
+		}
+	}
+
+	gettimeofday(&end, NULL);
+	//printf("Finished windowed contraction\n");
+
+	return {gateTDDs[plan_offset[std::get<1>(performed[performed.size() - 1])]], getMTime(start, end)};
+}
+
+
 
 dd::TDD plannedContractionOnCircuitFromFile(std::string path, std::vector<std::tuple<int, int>> plan, std::string file_name, std::unique_ptr<dd::Package<>>& dd) {
 	// Load in circuit from file

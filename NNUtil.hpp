@@ -14,12 +14,21 @@ using namespace std;
 
 typedef torch::Tensor (* vTensorCombinator)(torch::Tensor l, torch::Tensor r, float p, int s);
 
-bool debug_pytorch = true;
+bool debug_pytorch = false;
 std::map<std::string, int> gateIndices = {{"h"s, 0}, {"cx"s, 1}, {"cnot"s, 1}, {"rz"s, 2}, {"rx"s, 3}, {"u3"s, 4}, {"ry"s, 5}, 
                                                 {"s"s, 6}, {"x"s, 7}, {"cz"s, 8}, {"cy"s, 9}, {"y"s, 10}, {"z"s, 11}, {"t"s, 12}};
 static std::map<std::string, int> gateSizes = {{"cx"s, 6}, {"cz"s, 6}, {"rz"s, 4}, {"s"s, 4}, {"h"s, 3}, {"y"s, 4}, {"z"s, 4}, {"x"s, 4}, 
                                             {"cy"s, 6}, {"t"s, 4}, {"ry"s, 3}, {"rx"s, 4}, {"u3"s, 4}};
 const int maxGateIndex = 13;
+
+float getMTime(struct timeval start, struct timeval end) {
+    long mtime, seconds, useconds;  
+    seconds  = end.tv_sec  - start.tv_sec;
+    useconds = end.tv_usec - start.tv_usec;
+    mtime = ((seconds) * 1000 + useconds/1000.0) + 0.5;
+    return mtime;
+}
+
 
 void printTensor(torch::Tensor t) {
     printf("\nInput tensor: ");

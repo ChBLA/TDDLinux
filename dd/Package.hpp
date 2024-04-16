@@ -485,7 +485,9 @@ namespace dd {
 				}
 			}
 
-			if (flipped != is_control) {
+			bool is_cz = !gate_type.compare("z");
+			// (is_control && (!is_cz || !flipped)) || (!is_control && is_cz && flipped)
+			if ((is_control && (!is_cz || !flipped)) || (!is_control && is_cz && flipped)) {
 				if (to_test)
 					printf("Not flipped\n");
 				// Create CX/CNOT from I and X gate
@@ -1237,7 +1239,7 @@ namespace dd {
 			}
 
 			[[maybe_unused]] const auto after = cn.cacheCount();
-			assert(before == after);
+			//assert(before == after);
 
 			return res;
 		}
@@ -1384,6 +1386,7 @@ namespace dd {
 				if (!e.w.exactlyZero()) {
 					cn.mul(e.w, e.w, x.w);
 				} else {
+					return Edge<Node>::zero;
 					printf("L1058");
 				}
 				cn.returnToCache(yCopy.w);

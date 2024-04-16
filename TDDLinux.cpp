@@ -394,10 +394,32 @@ const char* testGraph(char* model_name_p, char* circuit_p, int qubits, char* pla
 	// Load NN model
 	auto model = load_jit_module("models/" + model_name);
 
+	struct timeval start, end;
+    long mtime, seconds, useconds;  
+	
+
 	// Make graph
+	gettimeofday(&start, NULL);
 	Graph g = initialiseGraph(gate_set, Index_set, edges, model);
+	gettimeofday(&end, NULL);
+
+	seconds  = end.tv_sec  - start.tv_sec;
+    useconds = end.tv_usec - start.tv_usec;
+    mtime = ((seconds) * 1000 + useconds/1000.0) + 0.5;
+
+	printf("Graph took: %ld\n", mtime);
+
+	gettimeofday(&start, NULL);
 	std::vector<std::tuple<int, int>> greedy_plan = GreedyPlan(gate_set, Index_set, edges, model);
-	printf("Plan is:\n");
+	gettimeofday(&end, NULL);
+
+	seconds  = end.tv_sec  - start.tv_sec;
+    useconds = end.tv_usec - start.tv_usec;
+    mtime = ((seconds) * 1000 + useconds/1000.0) + 0.5;
+
+	printf("Planning took: %ld\n", mtime);
+
+	printf("Plan: is:\n");
 	for (int i = 0; i < greedy_plan.size(); i++) {
 		printf("\tStep %d: (%d, %d)\n", i, std::get<0>(greedy_plan[i]), std::get<1>(greedy_plan[i]));
 	}
@@ -406,6 +428,76 @@ const char* testGraph(char* model_name_p, char* circuit_p, int qubits, char* pla
 	return "resString.data()";
 }
 
+
+const char* testOnlinePlanning(char* circuit_p, int qubits, char* model_name_p, char* pyEdges_p) {
+  
+	std::string pyEdges(pyEdges_p);
+	std::string circuit(circuit_p);
+	std::string model_name(model_name_p);
+
+	std::vector<std::tuple<int, int>> edges = get_actual_plan_from_string(pyEdges);
+
+	//int n = get_qubits_num_from_circuit(circuit);
+	int gates = get_gates_num_from_circuit(circuit);
+	auto dd = std::make_unique<dd::Package<>>(2 * gates);
+
+	auto model = load_jit_module("models/" + model_name);
+
+	std::tuple<dd::TDD, long> res = plannedContractionOnline(circuit, edges, model, dd);
+
+	bool resIsIdentity = dd->isTDDIdentity(std::get<0>(res), false, qubits);
+
+	return ((resIsIdentity ? "true" : "false") + std::string("; ") + std::to_string(std::get<1>(res))).data();
+}
+
+const char* testWindowedPlanning(char* circuit_p, int qubits, char* model_name_p, char* pyEdges_p, int windowSize) {
+  
+	std::string pyEdges(pyEdges_p);
+	std::string circuit(circuit_p);
+	std::string model_name(model_name_p);
+
+	std::vector<std::tuple<int, int>> edges = get_actual_plan_from_string(pyEdges);
+
+	//int n = get_qubits_num_from_circuit(circuit);
+	int gates = get_gates_num_from_circuit(circuit);
+	auto dd = std::make_unique<dd::Package<>>(2 * gates);
+
+	auto model = load_jit_module("models/" + model_name);
+
+	json result_data;
+	std::tuple<dd::TDD, long> res = plannedContractionWindowedNNGreedy(circuit, edges, model, windowSize, dd, result_data);
+
+	bool resIsIdentity = dd->isTDDIdentity(std::get<0>(res), false, qubits);
+
+	return ((resIsIdentity ? "true" : "false") + std::string("; ") + std::to_string(std::get<1>(res))).data();
+}
+
+
+
+const char* windowedPlanning(char* circuit_p, int qubits, char* model_name_p, char* pyEdges_p, int windowSize) {
+  
+	std::string pyEdges(pyEdges_p);
+	std::string circuit(circuit_p);
+	std::string model_name(model_name_p);
+
+	std::vector<std::tuple<int, int>> edges = get_actual_plan_from_string(pyEdges);
+
+	//int n = get_qubits_num_from_circuit(circuit);
+	int gates = get_gates_num_from_circuit(circuit);
+	auto dd = std::make_unique<dd::Package<>>(2 * gates);
+
+	auto model = load_jit_module("models/" + model_name);
+
+	json result_data;
+	std::tuple<dd::TDD, long> res = plannedContractionWindowedNNGreedy(circuit, edges, model, windowSize, dd, result_data);
+	//result_data["name"] = res_filename;
+
+	std::string result_str = result_data.dump();
+
+	bool resIsIdentity = dd->isTDDIdentity(std::get<0>(res), false, qubits);
+
+	return ((resIsIdentity ? "true" : "false") + std::string("; ") + std::to_string(std::get<1>(res))).data();
+}
 
 
 
@@ -420,6 +512,14 @@ extern "C" {
 
 	const char* pyTestGraph(char* model_name_p, char* circuit_p, int qubits, char* plan, char* pyEdges) {
 		return testGraph(model_name_p, circuit_p, qubits, plan, pyEdges);
+	}
+
+	const char* pyTestOnlinePlanning(char* circuit_p, int qubits, char* model_name_p, char* pyEdges) {
+		return testOnlinePlanning(circuit_p, qubits, model_name_p, pyEdges);
+	}
+
+	const char* pyTestWindowedPlanning(char* circuit_p, int qubits, char* model_name_p, char* pyEdges, int windowSize) {
+		return testWindowedPlanning(circuit_p, qubits, model_name_p, pyEdges, windowSize);
 	}
 
 	int testerFunc(int num) {
