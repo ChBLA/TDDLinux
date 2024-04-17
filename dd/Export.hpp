@@ -36,7 +36,7 @@ namespace dd {
 	}
 
 	inline fp thicknessFromMagnitude(const Complex& a) {
-		return 3.0 * std::max(dd::ComplexNumbers::mag(a), 0.10);
+		return 3.0 * std::max(dd::ComplexNumbers::mag(a), (fp)0.10);
 	}
 
 	static void printPhaseFormatted(std::ostream& os, fp r) {

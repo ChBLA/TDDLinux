@@ -263,8 +263,8 @@ int save_data() {
 // 	return (resIsIdentity + ";" + std::to_string(contTime)).data();
 // }
 
-const char* contractCircuit(char* circuit_p, int qubits, char* plan_p, char* res_filename_p, bool length_indifferent, bool debugging, bool draw_res, bool make_data, bool expect_equiv) {
-  
+const char* contractCircuit(char* circuit_p, int qubits, char* plan_p, char* res_filename_p, bool length_indifferent, bool debugging, bool draw_res, bool make_data, bool expect_equiv, int precision) {
+	
 	to_test = debugging;
 	std::string plan(plan_p);
 	std::string circuit(circuit_p);
@@ -275,6 +275,7 @@ const char* contractCircuit(char* circuit_p, int qubits, char* plan_p, char* res
 	//int n = get_qubits_num_from_circuit(circuit);
 	int gates = get_gates_num_from_circuit(circuit);
 	auto dd = std::make_unique<dd::Package<>>(2 * gates);
+	dd::ComplexNumbers::setTolerance(pow(2.0, -((dd::fp) precision)));
 
 	json result_data;
 	std::tuple<dd::TDD, long> res = plannedContractionOnCircuit(circuit, actualPlan, dd, res_filename, debugging, make_data, result_data);
@@ -502,8 +503,8 @@ const char* windowedPlanning(char* circuit_p, int qubits, char* model_name_p, ch
 
 
 extern "C" {
-	const char* pyContractCircuit(char* circuit_p, int qubits, char* plan_p, char* res_filename, bool length_indifferent, bool debugging, bool draw_res, bool make_data, bool expect_equiv) {
-		return contractCircuit(circuit_p, qubits, plan_p, res_filename, length_indifferent, debugging, draw_res, make_data, expect_equiv);
+	const char* pyContractCircuit(char* circuit_p, int qubits, char* plan_p, char* res_filename, bool length_indifferent, bool debugging, bool draw_res, bool make_data, bool expect_equiv, int precision) {
+		return contractCircuit(circuit_p, qubits, plan_p, res_filename, length_indifferent, debugging, draw_res, make_data, expect_equiv, precision);
 	}
 
 	const char* pyTestNNModel(char* model_name_p, char* circuit_p, int qubits, char* plan_p) {
