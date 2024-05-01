@@ -1634,8 +1634,9 @@ std::tuple<dd::TDD, long> plannedContractionWindowedNNGreedy(std::string circuit
 		//printf("Gate is: %s\n", gate_set[i].name.c_str());
 		gateTDDs[i] = gateToTDD(gate_set[i].name, Index_set[i], dd);
 	}
+	gettimeofday(&end, NULL);
+	auto prepTime = getMTime(start, end);
 
-	gettimeofday(&start, NULL);
 
 	// Apply plan
 
@@ -1646,23 +1647,29 @@ std::tuple<dd::TDD, long> plannedContractionWindowedNNGreedy(std::string circuit
 	Graph graph = initialiseGraph(gate_set, Index_set, pyEdges, model);
 
 	//printf("Starting windowed contraction\n");
-
+	gettimeofday(&start, NULL);
 	std::vector<std::tuple<int, int, float>> lockedWindow = NextWindowNNGreedy(graph, {}, windowSize);
-	
+	gettimeofday(&end, NULL);
+	std::vector<float> planningTimes = { getMTime(start, end) };
+	std::vector<float> contractionTimes = {};
 	//std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
+	std::vector<std::tuple<int, int, float, float>> performedStepsToSave = {};
+
 	while (lockedWindow.size()) {
+		gettimeofday(&start, NULL);
 		// Update contracted edges
-		//printf("Recomputing graph with %d\n", graph.edgeCount());
 		recomputeGraphWithActualValues(graph, performed);
-		//printf("Done recomputing graph with %d\n", graph.edgeCount());
+
 		// Plan next window
-		//printf("Plan next window\n");
 		planned = lockedWindow;
 		lockedWindow = NextWindowNNGreedy(graph, lockedWindow, windowSize);
+		gettimeofday(&end, NULL);
+		planningTimes.push_back(getMTime(start, end));
 
 		// STARTING CONTRACTION
 
+		gettimeofday(&start, NULL);
 		//printf("Resize vector\n");
 		performed.resize(0);
 		// Contract next window
@@ -1681,13 +1688,29 @@ std::tuple<dd::TDD, long> plannedContractionWindowedNNGreedy(std::string circuit
 			gateTDDs[rightIndex] = resTDD;
 
 			performed.push_back({std::get<0>(nextStep), std::get<1>(nextStep), logSize});
+			performedStepsToSave.push_back({std::get<0>(nextStep), std::get<1>(nextStep), std::get<2>(nextStep), logSize});
 		}
+
+		gettimeofday(&end, NULL);
+		contractionTimes.push_back(getMTime(start, end));
 	}
 
-	gettimeofday(&end, NULL);
 	//printf("Finished windowed contraction\n");
 
-	return {gateTDDs[plan_offset[std::get<1>(performed[performed.size() - 1])]], getMTime(start, end)};
+	json timing;
+	timing["contraction"] = contractionTimes;
+	timing["planning"] = planningTimes;
+	timing["preparation"] = prepTime;
+	result_data["time_data"] = timing;
+	result_data["executed_plan"] = performedStepsToSave;
+
+	float sum_of_elems = 0.0f;
+	for (auto& n : contractionTimes)
+    	sum_of_elems += n;
+	for (auto& m : planningTimes)
+    	sum_of_elems += m;
+
+	return {gateTDDs[plan_offset[std::get<1>(performed[performed.size() - 1])]], sum_of_elems};
 }
 
 

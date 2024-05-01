@@ -22,10 +22,11 @@ static std::map<std::string, int> gateSizes = {{"cx"s, 6}, {"cz"s, 6}, {"rz"s, 4
 const int maxGateIndex = 13;
 
 float getMTime(struct timeval start, struct timeval end) {
-    long mtime, seconds, useconds;  
+    float mtime, seconds, useconds;  
     seconds  = end.tv_sec  - start.tv_sec;
     useconds = end.tv_usec - start.tv_usec;
-    mtime = ((seconds) * 1000 + useconds/1000.0) + 0.5;
+    //mtime = ((seconds) * 1000 + useconds/1000.0) + 0.5;
+    mtime = (seconds) * 1000.0f + useconds/1000.0f;
     return mtime;
 }
 
@@ -40,10 +41,12 @@ void printTensor(torch::Tensor t) {
 }
 
 torch::jit::script::Module load_jit_module(std::string path) {
-    printf("Trying to load %s\n", path.c_str());
+    std::string actual_path = path + ".pt";
+    printf("Trying to load %s\n", actual_path.c_str());
     torch::jit::script::Module res;
     try {
-        res = torch::jit::load(path);
+        res = torch::jit::load(actual_path);
+        res.to(torch::kCPU); // torch::Device device(torch::kCPU); res->to(device)
     } catch (const c10::Error& e) {
         printf("Failed to load module");
     }

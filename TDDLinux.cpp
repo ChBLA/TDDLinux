@@ -11,6 +11,7 @@
 #include <sys/time.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <regex>
 
 
 using namespace std;
@@ -276,6 +277,7 @@ const char* contractCircuit(char* circuit_p, int qubits, char* plan_p, char* res
 	int gates = get_gates_num_from_circuit(circuit);
 	auto dd = std::make_unique<dd::Package<>>(2 * gates);
 	dd::ComplexNumbers::setTolerance(pow(2.0, -((dd::fp) precision)));
+	//dd->clear();
 
 	json result_data;
 	std::tuple<dd::TDD, long> res = plannedContractionOnCircuit(circuit, actualPlan, dd, res_filename, debugging, make_data, result_data);
@@ -475,7 +477,7 @@ const char* testWindowedPlanning(char* circuit_p, int qubits, char* model_name_p
 
 
 
-const char* windowedPlanning(char* circuit_p, int qubits, char* model_name_p, char* pyEdges_p, int windowSize) {
+const char* windowedPlanning(char* circuit_p, int qubits, char* model_name_p, char* pyEdges_p, bool length_indifferent, int windowSize) {
   
 	std::string pyEdges(pyEdges_p);
 	std::string circuit(circuit_p);
@@ -493,9 +495,18 @@ const char* windowedPlanning(char* circuit_p, int qubits, char* model_name_p, ch
 	std::tuple<dd::TDD, long> res = plannedContractionWindowedNNGreedy(circuit, edges, model, windowSize, dd, result_data);
 	//result_data["name"] = res_filename;
 
-	std::string result_str = result_data.dump();
+	// std::string result_str = result_data.dump();
+	// result_str = std::regex_replace(result_str, std::regex("\""), "'");
+	// printf("JSON output is %s", result_str.c_str());
 
-	bool resIsIdentity = dd->isTDDIdentity(std::get<0>(res), false, qubits);
+	std::string folder_name = std::string("temporary_files/");
+	if (!std::filesystem::is_directory(folder_name) || !std::filesystem::exists(folder_name))
+		std::filesystem::create_directory(folder_name);
+	std::ofstream out_file(folder_name + "temp_file_for_run" + ".json");
+	out_file << std::setw(4) << result_data << std::endl;
+	out_file.close();
+
+	bool resIsIdentity = dd->isTDDIdentity(std::get<0>(res), length_indifferent, qubits);
 
 	return ((resIsIdentity ? "true" : "false") + std::string("; ") + std::to_string(std::get<1>(res))).data();
 }
@@ -521,6 +532,10 @@ extern "C" {
 
 	const char* pyTestWindowedPlanning(char* circuit_p, int qubits, char* model_name_p, char* pyEdges, int windowSize) {
 		return testWindowedPlanning(circuit_p, qubits, model_name_p, pyEdges, windowSize);
+	}
+
+	const char* pyWindowedPlanning(char* circuit_p, int qubits, char* model_name_p, char* pyEdges, bool length_indifferent, int windowSize) {
+		return windowedPlanning(circuit_p, qubits, model_name_p, pyEdges, length_indifferent, windowSize);
 	}
 
 	int testerFunc(int num) {
