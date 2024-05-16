@@ -264,7 +264,7 @@ int save_data() {
 // 	return (resIsIdentity + ";" + std::to_string(contTime)).data();
 // }
 
-const char* contractCircuit(char* circuit_p, int qubits, char* plan_p, char* res_filename_p, bool length_indifferent, bool debugging, bool draw_res, bool make_data, bool expect_equiv, int precision) {
+const char* contractCircuit(char* circuit_p, int qubits, char* plan_p, char* res_filename_p, bool length_indifferent, bool debugging, bool draw_res, bool make_data, bool expect_equiv) {
 	
 	to_test = debugging;
 	std::string plan(plan_p);
@@ -276,7 +276,6 @@ const char* contractCircuit(char* circuit_p, int qubits, char* plan_p, char* res
 	//int n = get_qubits_num_from_circuit(circuit);
 	int gates = get_gates_num_from_circuit(circuit);
 	auto dd = std::make_unique<dd::Package<>>(2 * gates);
-	dd::ComplexNumbers::setTolerance(pow(2.0, -((dd::fp) precision)));
 	//dd->clear();
 
 	json result_data;
@@ -308,6 +307,14 @@ const char* contractCircuit(char* circuit_p, int qubits, char* plan_p, char* res
 		out_file << std::setw(4) << result_data << std::endl;
 		out_file.close();
 	}
+
+	std::string folder_name = std::string("temporary_files/");
+	if (!std::filesystem::is_directory(folder_name) || !std::filesystem::exists(folder_name))
+		std::filesystem::create_directory(folder_name);
+	std::ofstream out_file(folder_name + "temp_file_for_run" + ".json");
+	out_file << std::setw(4) << result_data << std::endl;
+	out_file.close();	
+
 	//return (resIsIdentity + ";" + std::to_string(contTime)).data();
     
 
@@ -477,7 +484,7 @@ const char* testWindowedPlanning(char* circuit_p, int qubits, char* model_name_p
 
 
 
-const char* windowedPlanning(char* circuit_p, int qubits, char* model_name_p, char* pyEdges_p, bool length_indifferent, int windowSize) {
+const char* windowedPlanning(char* circuit_p, int qubits, char* model_name_p, char* pyEdges_p, bool length_indifferent, int windowSize, bool parallel) {
   
 	std::string pyEdges(pyEdges_p);
 	std::string circuit(circuit_p);
@@ -492,7 +499,11 @@ const char* windowedPlanning(char* circuit_p, int qubits, char* model_name_p, ch
 	auto model = load_jit_module("models/" + model_name);
 
 	json result_data;
-	std::tuple<dd::TDD, long> res = plannedContractionWindowedNNGreedy(circuit, edges, model, windowSize, dd, result_data);
+	std::tuple<dd::TDD, long> res;
+	if (parallel) 
+		res = plannedContractionWindowedNNGreedy(circuit, edges, model, windowSize, dd, result_data);
+	else
+		res = plannedContractionNonParallelWindowedNNGreedy(circuit, edges, model, windowSize, dd, result_data);
 	//result_data["name"] = res_filename;
 
 	// std::string result_str = result_data.dump();
@@ -512,10 +523,60 @@ const char* windowedPlanning(char* circuit_p, int qubits, char* model_name_p, ch
 }
 
 
+const char* lookAheadPlanning(char* circuit_p, int qubits, char* pyEdges_p, char* res_filename_p, bool length_indifferent, bool draw) {
+  
+	std::string pyEdges(pyEdges_p);
+	std::string circuit(circuit_p);
+	std::string res_filename(res_filename_p);
+	res_name = res_filename;
+
+	std::vector<std::tuple<int, int>> edges = get_actual_plan_from_string(pyEdges);
+
+	//int n = get_qubits_num_from_circuit(circuit);
+	int gates = get_gates_num_from_circuit(circuit);
+	auto dd = std::make_unique<dd::Package<>>(2 * gates);
+
+
+	json result_data;
+	std::tuple<dd::TDD, long> res = lookAheadContraction(circuit, edges, dd, result_data);
+	//result_data["name"] = res_filename;
+
+	// std::string result_str = result_data.dump();
+	// result_str = std::regex_replace(result_str, std::regex("\""), "'");
+	// printf("JSON output is %s", result_str.c_str());
+
+	std::string folder_name = std::string("temporary_files/");
+	if (!std::filesystem::is_directory(folder_name) || !std::filesystem::exists(folder_name))
+		std::filesystem::create_directory(folder_name);
+	std::ofstream out_file(folder_name + "temp_file_for_run" + ".json");
+	out_file << std::setw(4) << result_data << std::endl;
+	out_file.close();
+
+	bool resIsIdentity = dd->isTDDIdentity(std::get<0>(res), length_indifferent, qubits);
+
+	if (draw)
+		dd::export2Dot(std::get<0>(res).e, res_filename);
+
+	return ((resIsIdentity ? "true" : "false") + std::string("; ") + std::to_string(std::get<1>(res))).data();
+}
+
+const bool setPrecision(int prec) {
+	try
+	{
+		dd::ComplexNumbers::setTolerance(pow(2.0, -((dd::fp) prec)));
+	}
+	catch(const std::exception& e)
+	{
+		std::cerr << e.what() << '\n';
+		return false;
+	}
+	return true;
+}
+
 
 extern "C" {
-	const char* pyContractCircuit(char* circuit_p, int qubits, char* plan_p, char* res_filename, bool length_indifferent, bool debugging, bool draw_res, bool make_data, bool expect_equiv, int precision) {
-		return contractCircuit(circuit_p, qubits, plan_p, res_filename, length_indifferent, debugging, draw_res, make_data, expect_equiv, precision);
+	const char* pyContractCircuit(char* circuit_p, int qubits, char* plan_p, char* res_filename, bool length_indifferent, bool debugging, bool draw_res, bool make_data, bool expect_equiv) {
+		return contractCircuit(circuit_p, qubits, plan_p, res_filename, length_indifferent, debugging, draw_res, make_data, expect_equiv);
 	}
 
 	const char* pyTestNNModel(char* model_name_p, char* circuit_p, int qubits, char* plan_p) {
@@ -534,8 +595,16 @@ extern "C" {
 		return testWindowedPlanning(circuit_p, qubits, model_name_p, pyEdges, windowSize);
 	}
 
-	const char* pyWindowedPlanning(char* circuit_p, int qubits, char* model_name_p, char* pyEdges, bool length_indifferent, int windowSize) {
-		return windowedPlanning(circuit_p, qubits, model_name_p, pyEdges, length_indifferent, windowSize);
+	const char* pyWindowedPlanning(char* circuit_p, int qubits, char* model_name_p, char* pyEdges, bool length_indifferent, int windowSize, bool parallel) {
+		return windowedPlanning(circuit_p, qubits, model_name_p, pyEdges, length_indifferent, windowSize, parallel);
+	}
+
+	const char* pyLookAheadPlanning(char* circuit_p, int qubits, char* pyEdges_p, char* res_filename_p, bool length_indifferent, bool draw) {
+		return lookAheadPlanning(circuit_p, qubits, pyEdges_p, res_filename_p, length_indifferent, draw);
+	}
+
+	const bool pySetPrecision(int prec) {
+		return setPrecision(prec);
 	}
 
 	int testerFunc(int num) {

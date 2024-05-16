@@ -27,6 +27,13 @@ public:
     Entry* next{};
     RefCount refCount{};
 
+    Entry copy() {
+      Entry copy;
+      copy.value = value;
+      copy.next = &((*next).copy());
+      copy.refCount = refCount;
+    }
+
     ///
     /// The sign of number is encoded in the least significant bit of its entry
     /// pointer If not handled properly, this causes misaligned access These
@@ -512,7 +519,7 @@ private:
 
   // numerical tolerance to be used for floating point values
   // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables,readability-identifier-naming)
-  static inline fp TOLERANCE = pow(2.0, -11.0);//std::numeric_limits<dd::fp>::epsilon() * 8;//0.00000381469726563f;//std::numeric_limits<dd::fp>::epsilon() * 8;
+  static inline fp TOLERANCE = pow(2.0, -18.0);//std::numeric_limits<dd::fp>::epsilon() * 8;//0.00000381469726563f;//std::numeric_limits<dd::fp>::epsilon() * 8;
 
   Entry* available{};
   std::vector<std::vector<Entry>> chunks{

@@ -24,6 +24,15 @@ template <class Node> struct Edge {
     return !operator==(other);
   }
 
+  Edge copy() {
+    Edge copy;
+    printf("About to copy TDD edge node\n");
+    copy.p = & ((*p).copy());
+    printf("Done copying TDD edge node\n");
+    copy.w = w.copy();
+    return copy;
+  }
+
   // edges pointing to zero and one terminals
   static const Edge zero; // NOLINT(readability-identifier-naming)
   static const Edge one;  // NOLINT(readability-identifier-naming)

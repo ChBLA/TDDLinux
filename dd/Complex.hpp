@@ -24,6 +24,13 @@ struct Complex {
     i->value = CTEntry::val(c.i);
   }
 
+  Complex copy() {
+    Complex copy;
+    copy.r = & ((*r).copy());
+    copy.i = & ((*i).copy());
+    return copy;
+  }
+
   [[nodiscard]] inline bool approximatelyEquals(const Complex& c) const {
     return CTEntry::approximatelyEquals(r, c.r) &&
            CTEntry::approximatelyEquals(i, c.i);

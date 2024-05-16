@@ -30,7 +30,8 @@ constexpr GateMatrix Imat{complex_one, complex_zero, complex_zero, complex_one};
 constexpr GateMatrix Hmat{complex_SQRT2_2, complex_SQRT2_2, complex_SQRT2_2,
                           complex_mSQRT2_2};
 constexpr GateMatrix Xmat{complex_zero, complex_one, complex_one, complex_zero};
-constexpr GateMatrix Ymat{complex_zero, complex_mi, complex_i, complex_zero};
+constexpr GateMatrix Ymat{complex_zero, complex_i, complex_mi, complex_zero};
+constexpr GateMatrix FYmat{complex_zero, complex_mi, complex_i, complex_zero};
 constexpr GateMatrix Zmat{complex_one, complex_zero, complex_zero,
                           complex_mone};
 constexpr GateMatrix Smat{complex_one, complex_zero, complex_zero, complex_i};

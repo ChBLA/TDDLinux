@@ -6,6 +6,7 @@
 
 #include "nlohmann/json.hpp"
 #include "Planning.hpp"
+#include "LookaheadPlanning.hpp"
 
 #include <unordered_set>
 #include <vector>
@@ -1408,6 +1409,8 @@ std::tuple<dd::TDD, long> plannedContractionOnCircuit(std::string circuit, std::
 	nodes[0] = 0;
 	nodes[1] = 0;
 
+	struct timeval start, end;
+	gettimeofday(&start, NULL);
 
 	// Prepare TDD env (var order ...)
 	dd->varOrder = get_var_order();
@@ -1443,25 +1446,29 @@ std::tuple<dd::TDD, long> plannedContractionOnCircuit(std::string circuit, std::
 			std::string gate_name_fs = gate_set[i].name;
 			std::replace(gate_name_fs.begin(), gate_name_fs.end(), '(', '_');
 			std::replace(gate_name_fs.begin(), gate_name_fs.end(), ')', '_');
+			std::replace(gate_name_fs.begin(), gate_name_fs.end(), '.', ',');
 
 			dd::export2Dot(gateTDDs[i].e, "cpp_debugging/" + res_filename + "_g" + std::to_string(i) + "_" + gate_name_fs);
 		}
 	}
 
-	struct timeval start, end;
-    long mtime, seconds, useconds;  
+	gettimeofday(&end, NULL);
+	auto prepTime = getMTime(start, end);
 
 	if (debugging)
 		printf("Starting contraction\n\n");
-	gettimeofday(&start, NULL);
+	
+	std::vector<float> contractionTimes = {};
+	std::vector<std::tuple<int, int, float>> performedSteps = {};
+	for (auto& x : plan_offset) {
+		performedSteps.push_back({x.first, x.first, dd->size(gateTDDs[x.second].e)});
+	}
+
+
 	// Apply plan
 	int current_step = 1;
 	std::vector<json> jsons(plan.size());
 	for (int k = 0; k < plan.size(); k++) {
-		// if (((double) k) / ((double) plan.size()) * 10 > current_step) {
-		// 	printf("Done with: %d of %ld\n", k, plan.size());
-		// 	current_step++;
-		// }
 		std::string folder_name = std::string("cpp_debugging/contraction_") + std::to_string(k) + "/";
 
 		int leftIndex = plan_offset[std::get<0>(plan[k])];
@@ -1476,6 +1483,7 @@ std::tuple<dd::TDD, long> plannedContractionOnCircuit(std::string circuit, std::
 			dd::export2Dot(rightTDD.e, folder_name + res_filename + "_h" + std::to_string(k));
 		}
 
+		gettimeofday(&start, NULL);
 		dd::TDD resTDD;
 		if (make_dataset) {
 			json res_json;
@@ -1484,7 +1492,10 @@ std::tuple<dd::TDD, long> plannedContractionOnCircuit(std::string circuit, std::
 		} else {
 			resTDD = applyTDDs(leftTDD, rightTDD, dd);
 		}
-		
+		gettimeofday(&end, NULL);
+		contractionTimes.push_back(getMTime(start, end));
+		performedSteps.push_back({std::get<0>(plan[k]), std::get<1>(plan[k]), dd->size(resTDD.e)});
+
 		// std::tuple<dd::TDD, json> res = applyTDDs(leftTDD, rightTDD, dd);
 		// dd::TDD resTDD = std::get<0>(res);
 		// json resJson = std::get<1>(res);
@@ -1504,25 +1515,32 @@ std::tuple<dd::TDD, long> plannedContractionOnCircuit(std::string circuit, std::
 			dd::export2Dot(resTDD.e, folder_name + res_filename + "_r" + std::to_string(k));
 		}
 	}
-	gettimeofday(&end, NULL);
 
 	if (debugging)
 		printf("Done with contraction\n\n");
-	seconds  = end.tv_sec  - start.tv_sec;
-    useconds = end.tv_usec - start.tv_usec;
-    mtime = ((seconds) * 1000 + useconds/1000.0) + 0.5;
+	
+	
+	float sum_of_elems = 0.0f;
+	for (auto& n : contractionTimes)
+    	sum_of_elems += n;
 
 	if (debugging)
-    	printf("Elapsed time: %ld milliseconds\n", mtime);
+    	printf("Elapsed time: %ld milliseconds\n", sum_of_elems);
 
 	if (make_dataset)
 		result_data["data"] = jsons;
+
+	json timing;
+	timing["contraction"] = contractionTimes;
+	timing["preparation"] = prepTime;
+	result_data["time_data"] = timing;
+	result_data["executed_plan"] = performedSteps;
 	// // Pretty print json file
 	// std::ofstream out_file(folder_name + res_filename + "_r" + std::to_string(k) + ".json");
 	// out_file << std::setw(4) << res_json << std::endl;
 	// out_file.close();
 
-	return {gateTDDs[plan_offset[std::get<1>(plan[plan.size() - 1])]], mtime};
+	return {gateTDDs[plan_offset[std::get<1>(plan[plan.size() - 1])]], sum_of_elems};
 }
 
 std::tuple<dd::TDD, long> plannedContractionOnline(std::string circuit, std::vector<std::tuple<int, int>> pyEdges, torch::jit::script::Module model,
@@ -1711,6 +1729,200 @@ std::tuple<dd::TDD, long> plannedContractionWindowedNNGreedy(std::string circuit
     	sum_of_elems += m;
 
 	return {gateTDDs[plan_offset[std::get<1>(performed[performed.size() - 1])]], sum_of_elems};
+}
+
+
+std::tuple<dd::TDD, long> plannedContractionNonParallelWindowedNNGreedy(std::string circuit, std::vector<std::tuple<int, int>> pyEdges, torch::jit::script::Module model,
+														int windowSize, std::unique_ptr<dd::Package<>>& dd, json& result_data) {
+	struct timeval start, end;
+	gettimeofday(&start, NULL);
+	
+	// Load in circuit from file
+	std::map<int, gate> gate_set = import_circuit_from_string(circuit);
+
+	int* nodes = new int[2];
+	nodes[0] = 0;
+	nodes[1] = 0;
+
+	// Prepare TDD env (var order ...)
+	dd->varOrder = get_var_order();
+	dd->to_test = false;
+
+	std::map<int, std::vector<dd::Index>> Index_set = get_index(gate_set, dd->varOrder);
+	dd::TDD tdd = { dd::Edge<dd::mNode>::one ,{} };
+
+	if (release) {
+		dd->incRef(tdd.e);
+	}
+
+	int node_num_max = 0;
+
+	// Prepare Gate TDDs
+	std::vector<dd::TDD> gateTDDs(gate_set.size());
+	for (int i = 0; i < gateTDDs.size(); i++) {
+		//printf("Gate is: %s\n", gate_set[i].name.c_str());
+		gateTDDs[i] = gateToTDD(gate_set[i].name, Index_set[i], dd);
+	}
+	gettimeofday(&end, NULL);
+	auto prepTime = getMTime(start, end);
+
+
+	// Apply plan
+
+	int performedSteps = 0;
+	std::vector<std::tuple<int, int, float>> planned = {};
+	std::vector<std::tuple<int, int, float>> performed = {};
+
+	Graph graph = initialiseGraph(gate_set, Index_set, pyEdges, model);
+
+	//printf("Starting windowed contraction\n");
+	std::vector<std::tuple<int, int, float>> lockedWindow = {};
+	std::vector<float> planningTimes = { getMTime(start, end) };
+	std::vector<float> contractionTimes = {};
+	//std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+
+	std::vector<std::tuple<int, int, float, float>> performedStepsToSave = {};
+
+	while (lockedWindow.size()) {
+		gettimeofday(&start, NULL);
+		// Update contracted edges
+		recomputeGraphWithActualValues(graph, performed);
+
+		// Plan next window
+		planned = lockedWindow;
+		lockedWindow = NextWindowNNGreedy(graph, lockedWindow, windowSize);
+		gettimeofday(&end, NULL);
+		planningTimes.push_back(getMTime(start, end));
+
+		// STARTING CONTRACTION
+
+		gettimeofday(&start, NULL);
+		//printf("Resize vector\n");
+		performed.resize(0);
+		// Contract next window
+		//printf("Contract window\n");
+		for (int i = 0; i < planned.size(); i++) {
+			auto nextStep = planned[i];
+
+			int leftIndex = plan_offset[std::get<0>(nextStep)];
+			int rightIndex = plan_offset[std::get<1>(nextStep)];
+
+			dd::TDD leftTDD = gateTDDs[leftIndex];
+			dd::TDD rightTDD = gateTDDs[rightIndex];
+			dd::TDD resTDD = applyTDDs(leftTDD, rightTDD, dd);
+
+			float logSize = std::log2(dd->size(resTDD.e));
+			gateTDDs[rightIndex] = resTDD;
+
+			performed.push_back({std::get<0>(nextStep), std::get<1>(nextStep), logSize});
+			performedStepsToSave.push_back({std::get<0>(nextStep), std::get<1>(nextStep), std::get<2>(nextStep), logSize});
+		}
+
+		gettimeofday(&end, NULL);
+		contractionTimes.push_back(getMTime(start, end));
+	}
+
+	//printf("Finished windowed contraction\n");
+
+	json timing;
+	timing["contraction"] = contractionTimes;
+	timing["planning"] = planningTimes;
+	timing["preparation"] = prepTime;
+	result_data["time_data"] = timing;
+	result_data["executed_plan"] = performedStepsToSave;
+
+	float sum_of_elems = 0.0f;
+	for (auto& n : contractionTimes)
+    	sum_of_elems += n;
+	for (auto& m : planningTimes)
+    	sum_of_elems += m;
+
+	return {gateTDDs[plan_offset[std::get<1>(performed[performed.size() - 1])]], sum_of_elems};
+}
+
+
+std::tuple<dd::TDD, long> lookAheadContraction(std::string circuit, std::vector<std::tuple<int, int>> pyEdges,
+														std::unique_ptr<dd::Package<>>& dd, json& result_data) {
+	struct timeval start, end;
+	gettimeofday(&start, NULL);
+	
+	// Load in circuit from file
+	std::map<int, gate> gate_set = import_circuit_from_string(circuit);
+
+	int* nodes = new int[2];
+	nodes[0] = 0;
+	nodes[1] = 0;
+
+	// Prepare TDD env (var order ...)
+	dd->varOrder = get_var_order();
+	dd->to_test = false;
+
+	std::map<int, std::vector<dd::Index>> Index_set = get_index(gate_set, dd->varOrder);
+	dd::TDD tdd = { dd::Edge<dd::mNode>::one ,{} };
+
+	if (release) {
+		dd->incRef(tdd.e);
+	}
+
+	int node_num_max = 0;
+	std::vector<dd::TDD> gateTDDs(gate_set.size());
+	for (int i = 0; i < gateTDDs.size(); i++) {
+		//printf("Gate is: %s\n", gate_set[i].name.c_str());
+		gateTDDs[i] = gateToTDD(gate_set[i].name, Index_set[i], dd);
+	}
+
+	gettimeofday(&end, NULL);
+	auto prepTime = getMTime(start, end);
+
+	// Apply plan
+
+	std::vector<std::tuple<int, int, float>> planned = {};
+
+	LGraph graph = initialiseLGraph(gateTDDs, Index_set, pyEdges, dd);
+
+	std::vector<float> contractionTimes = {};
+	//std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+	std::vector<std::tuple<int, int, float>> performedSteps = {};
+
+	while (graph.edges.size() > 1) {
+		gettimeofday(&start, NULL);
+		auto step = LookAheadNextStep(graph);
+		performedSteps.push_back(step);
+		gettimeofday(&end, NULL);
+		contractionTimes.push_back(getMTime(start, end));
+
+		if (false) {
+			printf("Vertices: \n");
+			for (auto it = graph.vertices.begin(); it != graph.vertices.end(); ++it) {
+				int key = it->first;
+				LVertex& val = it->second;
+				if (val.edges.size() > 0)
+					printf("\t%d: %s\n", key, lVertexToString(val).c_str());
+			}
+		}
+	}
+
+	int lastEdgeIdx;
+	assert(graph.edges.size() == 1);
+	for (auto& x : graph.edges) {
+		lastEdgeIdx = x.first;
+	}
+
+	performedSteps.push_back({graph.edges[lastEdgeIdx].vertices[0], graph.edges[lastEdgeIdx].vertices[1], graph.edges[lastEdgeIdx].weight});
+
+	json timing;
+	timing["contraction"] = contractionTimes;
+	timing["preparation"] = prepTime;
+	result_data["time_data"] = timing;
+	result_data["executed_plan"] = performedSteps;
+
+	float sum_of_elems = 0.0f;
+	for (auto& n : contractionTimes)
+    	sum_of_elems += n;
+
+
+
+	return {graph.edges[lastEdgeIdx].resultingTDD, sum_of_elems};
 }
 
 

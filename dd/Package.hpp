@@ -365,7 +365,7 @@ namespace dd {
 			if (!gate_type.compare("z")) {
 				high_gate = Zmat;
 			} else if (!gate_type.compare("y")) {
-				high_gate = Ymat;
+				high_gate = FYmat;
 			} else {
 				if (gate_type.compare("x")) {
 					printf("Gate type %s not supported, defaulting to cx gate", gate_type.c_str());
@@ -478,7 +478,10 @@ namespace dd {
 			if (!gate_type.compare("z")) {
 				high_gate = Zmat;
 			} else if (!gate_type.compare("y")) {
-				high_gate = Ymat;
+				if (!flipped)
+					high_gate = FYmat;
+				else
+					high_gate = Ymat;
 			} else {
 				if (gate_type.compare("x")) {
 					printf("Gate type %s not supported, defaulting to cx gate", gate_type.c_str());
@@ -1265,7 +1268,6 @@ namespace dd {
 			}
 			return isNodeIdentity(tdd.e, lengthIndifferent, expectedLength);
 		}
-
 		
 
 
