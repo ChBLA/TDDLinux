@@ -509,7 +509,7 @@ const char* windowedPlanning(char* circuit_p, int qubits, char* model_name_p, ch
 	// std::string result_str = result_data.dump();
 	// result_str = std::regex_replace(result_str, std::regex("\""), "'");
 	// printf("JSON output is %s", result_str.c_str());
-
+	printf("Issues with saving\n");
 	std::string folder_name = std::string("temporary_files/");
 	if (!std::filesystem::is_directory(folder_name) || !std::filesystem::exists(folder_name))
 		std::filesystem::create_directory(folder_name);

@@ -8,6 +8,11 @@
 #include "NNUtil.hpp"
 #include "dd/Package.hpp"
 #include "dd/Export.hpp"
+#include"time.h"
+#include <math.h>
+#include <chrono>
+#include <ctime>
+#include <sys/time.h>
 
 using namespace std;
 
@@ -25,6 +30,7 @@ struct Edge {
     int vertices[2];
     float weight;
     int sharedIndices;
+    float time;
 
     friend bool operator<(const Edge& l, const Edge& r) {
         if (l.weight < r.weight) return true;
@@ -61,6 +67,7 @@ struct Edge {
         copy.vertices[1] = vertices[1];
         copy.weight = weight;
         copy.sharedIndices = sharedIndices;
+        copy.time = time;
         return copy;
     }
 
@@ -104,6 +111,10 @@ public:
     std::map<int, Edge> edges;
     int maxVertexId;
 
+    float timeForCurrentStep;
+    std::vector<float> updateTime;
+    std::vector<float> contractionTime;
+
     std::queue<int> workingQueue;
     torch::jit::script::Module model;
 
@@ -113,6 +124,9 @@ public:
         torch::jit::script::Module model, vTensorCombinator tensorCombiner, const int maxVertexId)
             : vertices(vertices), edges(edges), workingQueue(workingQueue), model(model), tensorCombiner(tensorCombiner), maxVertexId(maxVertexId)
         {
+            timeForCurrentStep = 0;
+            updateTime = {};
+            contractionTime = {};
             if (!this->workingQueue.empty())
                 this->updateEdges();
 
@@ -131,7 +145,10 @@ public:
 
         // Prepare new vertex
         right.features = this->tensorCombiner(left.features, right.features, actualVal != 0.0f ? actualVal : edge.weight, edge.sharedIndices);
-        
+        this->contractionTime.push_back(edge.time);
+        this->updateTime.push_back(this->timeForCurrentStep);
+        this->timeForCurrentStep = 0;
+
         // Delete edge from result
         right.edges.erase(std::remove(right.edges.begin(), right.edges.end(), edgeIdx), right.edges.end());
         
@@ -201,10 +218,17 @@ public:
                 printf("Updating edge: %d\n", elemIdx);
             
             Edge edge = this->edges[elemIdx];
+            struct timeval start, end;
+	        gettimeofday(&start, NULL);
+            
             float new_pred = applyModel(this->model, this->vertices[edge.vertices[0]].features, this->vertices[edge.vertices[1]].features, edge.sharedIndices);
+
+            gettimeofday(&end, NULL);
+            edge.time = getMTime(start, end);
 
             this->edges[elemIdx].weight = new_pred;
             this->workingQueue.pop();
+            this->timeForCurrentStep += edge.time;
         }
     }
 

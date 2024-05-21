@@ -4,6 +4,11 @@
 #include <queue>
 #include <algorithm>
 #include <stdio.h>
+#include"time.h"
+#include <math.h>
+#include <chrono>
+#include <ctime>
+#include <sys/time.h>
 
 using namespace std;
 
@@ -23,6 +28,7 @@ struct LEdge {
     int vertices[2];
     float weight;
     int sharedIndices;
+    float time;
     dd::TDD resultingTDD;
 
     friend bool operator<(const LEdge& l, const LEdge& r) {
@@ -61,6 +67,7 @@ struct LEdge {
         copy.weight = weight;
         copy.sharedIndices = sharedIndices;
         copy.resultingTDD = resultingTDD.copy();
+        copy.time = time;
         return copy;
     }
 
@@ -102,6 +109,9 @@ public:
     std::map<int, LVertex> vertices;
     std::map<int, LEdge> edges;
     int maxVertexId;
+    float timeForCurrentStep;
+    std::vector<float> updateTime;
+    std::vector<float> contractionTime;
     std::unique_ptr<dd::Package<>>& dd;
 
     std::queue<int> workingQueue;
@@ -109,6 +119,9 @@ public:
     LGraph(std::map<int, LVertex> vertices, std::map<int, LEdge> edges, std::queue<int> workingQueue, const int maxVertexId, std::unique_ptr<dd::Package<>>& dd)
             : vertices(vertices), edges(edges), workingQueue(workingQueue), maxVertexId(maxVertexId), dd(dd)
         {
+            timeForCurrentStep = 0;
+            updateTime = {};
+            contractionTime = {};
             if (!this->workingQueue.empty())
                 this->updateEdges();
 
@@ -136,7 +149,10 @@ public:
         }
         // Prepare new vertex
         right.tdd = edge.resultingTDD;
-        
+        this->contractionTime.push_back(edge.time);
+        this->updateTime.push_back(this->timeForCurrentStep);
+        this->timeForCurrentStep = 0;
+
         if (l_debug_planning) {
             std::string folder_name = std::string("cpp_debugging/contraction_") + std::to_string(counter++) + "/";
             dd::export2Dot(right.tdd.e, folder_name + res_name + "_r" + std::to_string(edgeIdx));
@@ -220,11 +236,18 @@ public:
                 }
             }
             LEdge edge = this->edges[elemIdx];
+            struct timeval start, end;
+	        gettimeofday(&start, NULL);
+            
             edge.resultingTDD = realContract(this->vertices[edge.vertices[0]], this->vertices[edge.vertices[1]]);
             edge.weight = this->dd->size(edge.resultingTDD.e);
-
+            
+            gettimeofday(&end, NULL);
+            edge.time = getMTime(start, end);
+            
             this->edges[elemIdx] = edge;
             this->workingQueue.pop();
+            this->timeForCurrentStep += edge.time;
         }
     }
 
@@ -333,7 +356,7 @@ LGraph initialiseLGraph(std::vector<dd::TDD> gateTDDs, std::map<int, std::vector
     return LGraph(vertices, edges, workingQueue, maxVertexId, dd);
 }
 
-std::tuple<int, int, float> LookAheadNextStep(LGraph& g) {
+std::tuple<int, int, float, float> LookAheadNextStep(LGraph& g) {
     int min_edge = -1;
     for (auto it = g.edges.begin(); it != g.edges.end(); ++it) {
         int key = it->first;
@@ -345,15 +368,16 @@ std::tuple<int, int, float> LookAheadNextStep(LGraph& g) {
 
     float weight = g.edges[min_edge].weight;
     std::tuple<int, int> step = {g.edges[min_edge].vertices[0], g.edges[min_edge].vertices[1]};
+    float edge_time = g.edges[min_edge].time;
     g.contractEdge(min_edge);
 
-    return {std::get<0>(step), std::get<1>(step), weight};
+    return {std::get<0>(step), std::get<1>(step), weight, edge_time};
 }
 
-std::vector<std::tuple<int, int, float>> LookAheadPlan(std::vector<dd::TDD> gateTDDs, std::map<int, std::vector<dd::Index>> index_set, 
+std::vector<std::tuple<int, int, float, float>> LookAheadPlan(std::vector<dd::TDD> gateTDDs, std::map<int, std::vector<dd::Index>> index_set, 
                                                 std::vector<std::tuple<int, int>> pythonEdges, std::unique_ptr<dd::Package<>>& dd) {
     LGraph g = initialiseLGraph(gateTDDs, index_set, pythonEdges, dd);
-    std::vector<std::tuple<int, int, float>> plan = {};
+    std::vector<std::tuple<int, int, float, float>> plan = {};
     int edgeCount = g.edges.size();
 
     for (int i = 0; i < edgeCount - 1; i++) {
