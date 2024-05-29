@@ -43,8 +43,10 @@ namespace dd {
 			if (next != nullptr) {
 				mNode temp = (*next);
 				printf("Not an issue with the pointer: ");
-				if (&temp != nullptr)
-					copy.next = & (temp.copy());
+				if (&temp != nullptr) {
+					mNode tempCopy = temp.copy();
+					copy.next = &tempCopy;
+				}
 			}
 			printf("About to copy TDD edge node value p3\n");
 			copy.ref = ref;

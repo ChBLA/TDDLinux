@@ -115,12 +115,12 @@ public:
     std::vector<float> updateTime;
     std::vector<float> contractionTime;
 
-    std::queue<int> workingQueue;
+    std::vector<int> workingQueue;
     torch::jit::script::Module model;
 
     vTensorCombinator tensorCombiner;
 
-    Graph(std::map<int, Vertex> vertices, std::map<int, Edge> edges, std::queue<int> workingQueue, 
+    Graph(std::map<int, Vertex> vertices, std::map<int, Edge> edges, std::vector<int> workingQueue, 
         torch::jit::script::Module model, vTensorCombinator tensorCombiner, const int maxVertexId)
             : vertices(vertices), edges(edges), workingQueue(workingQueue), model(model), tensorCombiner(tensorCombiner), maxVertexId(maxVertexId)
         {
@@ -136,12 +136,26 @@ public:
         return v1.idx < v2.idx ? v1.idx * this->maxVertexId + v2.idx : v2.idx * this->maxVertexId + v1.idx;
     }
 
+    void updateEdgeWeight(int vertexId, float weight) {
+        Vertex vertex = this->vertices[vertexId];
+        if (vertex.edges.size() == 0)
+            return;
+        vertex.features[0] = weight;
+        this->vertices[vertexId] = vertex;
+
+        for (int i = 0; i < vertex.edges.size(); i++) {
+            this->workingQueue.push_back(vertex.edges[i]);
+        }
+        this->updateEdges();
+    }
+
     void contractEdge(int edgeIdx, float actualVal=0.0f) {
         Edge edge = this->edges[edgeIdx];
         Vertex left = this->vertices[edge.vertices[0]];
         Vertex right = this->vertices[edge.vertices[1]];
-        if (debug_planning)
+        if (debug_planning) {
             printf("Contracting edge: %d with vertices: %d %d\n", edgeIdx, edge.vertices[0], edge.vertices[1]);
+        }
 
         // Prepare new vertex
         right.features = this->tensorCombiner(left.features, right.features, actualVal != 0.0f ? actualVal : edge.weight, edge.sharedIndices);
@@ -198,7 +212,7 @@ public:
 
         // Schedule edges for recomputation
         for (int i = 0; i < right.edges.size(); i++) {
-            this->workingQueue.push(right.edges[i]);
+            this->workingQueue.push_back(right.edges[i]);
         }
 
         // Remove contracted edge
@@ -212,24 +226,34 @@ public:
     }
 
     void updateEdges() {
-        while (!this->workingQueue.empty()) {
-            int elemIdx = this->workingQueue.front();
-            if (debug_planning)
-                printf("Updating edge: %d\n", elemIdx);
-            
-            Edge edge = this->edges[elemIdx];
-            struct timeval start, end;
-	        gettimeofday(&start, NULL);
-            
-            float new_pred = applyModel(this->model, this->vertices[edge.vertices[0]].features, this->vertices[edge.vertices[1]].features, edge.sharedIndices);
+        if (this->workingQueue.empty())
+            return;
+        std::vector<torch::Tensor> leftFeatures = {};
+        std::vector<torch::Tensor> rightFeatures = {};
+        std::vector<int> sharedIndicesVec = {};
 
-            gettimeofday(&end, NULL);
-            edge.time = getMTime(start, end);
-
-            this->edges[elemIdx].weight = new_pred;
-            this->workingQueue.pop();
-            this->timeForCurrentStep += edge.time;
+        for (int i = 0; i < this->workingQueue.size(); i++) {
+            auto edge = this->edges[this->workingQueue[i]];
+            leftFeatures.push_back(this->vertices[edge.vertices[0]].features);
+            rightFeatures.push_back(this->vertices[edge.vertices[1]].features);
+            sharedIndicesVec.push_back(edge.sharedIndices);
         }
+
+        struct timeval start, end;
+	    gettimeofday(&start, NULL);
+        
+        std::vector<float> predictions = applyModel(this->model, leftFeatures, rightFeatures, sharedIndicesVec);
+
+        gettimeofday(&end, NULL);
+        this->timeForCurrentStep = getMTime(start, end);
+        float edgeTime = this->timeForCurrentStep / ((float) this->workingQueue.size());
+
+        for (int i = 0; i < this->workingQueue.size(); i++) {
+            this->edges[this->workingQueue[i]].weight = predictions[i];
+            this->edges[this->workingQueue[i]].time = edgeTime;
+        }
+
+        workingQueue.resize(0);
     }
 
     bool doneWithContraction() {
@@ -265,7 +289,7 @@ public:
 Graph initialiseGraph(std::map<int, gate> gate_set, std::map<int, std::vector<dd::Index>> index_set, std::vector<std::tuple<int, int>> pythonEdges, torch::jit::script::Module model) {
     std::map<int, Edge> edges = {};
     std::map<int, Vertex> vertices = {};
-    std::queue<int> workingQueue = {};
+    std::vector<int> workingQueue = {};
 
     int maxVertexId = 1;
     for (int i = 0; i < pythonEdges.size(); i++) {
@@ -302,7 +326,7 @@ Graph initialiseGraph(std::map<int, gate> gate_set, std::map<int, std::vector<dd
         new_edge.sharedIndices = sharedIndices;
 
         edges[new_edge.id] = new_edge;
-        workingQueue.push(new_edge.id);
+        workingQueue.push_back(new_edge.id);
 
         int idx = std::get<0>(pythonEdges[i]);
         if (vertices.find(idx) != vertices.end()) {
@@ -311,7 +335,7 @@ Graph initialiseGraph(std::map<int, gate> gate_set, std::map<int, std::vector<dd
             Vertex vertex;
             int vertIdx = plan_offset[idx];
             vertex.idx = idx;
-            vertex.features = makeTDDTensorFromValues(gate_set[vertIdx].name, index_set[vertIdx].size());
+            vertex.features = makeTDDTensorFromValues(gate_set[vertIdx].name, index_set[vertIdx].size()).to(_device);
             vertex.edges = { new_edge.id };
             vertices[idx] = vertex;
         }
@@ -323,7 +347,7 @@ Graph initialiseGraph(std::map<int, gate> gate_set, std::map<int, std::vector<dd
             Vertex vertex;
             int vertIdx = plan_offset[idx];
             vertex.idx = idx;
-            vertex.features = makeTDDTensorFromValues(gate_set[vertIdx].name, index_set[vertIdx].size());
+            vertex.features = makeTDDTensorFromValues(gate_set[vertIdx].name, index_set[vertIdx].size()).to(_device);
             vertex.edges = { new_edge.id };
             vertices[idx] = vertex;
         }

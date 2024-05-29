@@ -7,6 +7,7 @@
 #include "nlohmann/json.hpp"
 #include "Planning.hpp"
 #include "LookaheadPlanning.hpp"
+#include "QueuePlanning.hpp"
 
 #include <unordered_set>
 #include <vector>
@@ -1771,38 +1772,30 @@ std::tuple<dd::TDD, long> plannedContractionNonParallelWindowedNNGreedy(std::str
 
 	// Apply plan
 
-	int performedSteps = 0;
 	std::vector<std::tuple<int, int, float>> planned = {};
-	std::vector<std::tuple<int, int, float>> performed = {};
+	
 	gettimeofday(&start, NULL);
-
 	Graph graph = initialiseGraph(gate_set, Index_set, pyEdges, model);
 	gettimeofday(&end, NULL);
 
 	//printf("Starting windowed contraction\n");
-	std::vector<std::tuple<int, int, float>> lockedWindow = {};
 	std::vector<float> planningTimes = { getMTime(start, end) };
 	std::vector<float> contractionTimes = {};
+	std::vector<float> sizeMeasureTimes = {};
 	//std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
 	std::vector<std::tuple<int, int, float, float>> performedStepsToSave = {};
 
 	do {
-		gettimeofday(&start, NULL);
-		// Update contracted edges
-		recomputeGraphWithActualValues(graph, performed);
-
-		// Plan next window
-		planned = lockedWindow;
-		lockedWindow = NextWindowNNGreedy(graph, lockedWindow, windowSize);
-		gettimeofday(&end, NULL);
-		planningTimes.push_back(getMTime(start, end));
-
-		// STARTING CONTRACTION
-		//printf("Resize vector\n");
-		performed.resize(0);
-		// Contract next window
-		//printf("Contract window\n");
+		for (int i = 0; i < windowSize && !graph.doneWithContraction(); i++) {
+			gettimeofday(&start, NULL);
+			
+			planned.push_back(GreedyPlanNextStep(graph));
+			
+			gettimeofday(&end, NULL);
+			planningTimes.push_back(getMTime(start, end));
+		}
+		
 		for (int i = 0; i < planned.size(); i++) {
 			auto nextStep = planned[i];
 
@@ -1814,24 +1807,33 @@ std::tuple<dd::TDD, long> plannedContractionNonParallelWindowedNNGreedy(std::str
 
 			gettimeofday(&start, NULL);
 			dd::TDD resTDD = applyTDDs(leftTDD, rightTDD, dd);
-			float logSize = std::log2(dd->size(resTDD.e));
 			gettimeofday(&end, NULL);
 			contractionTimes.push_back(getMTime(start, end));
 
+			gettimeofday(&start, NULL);
+			float logSize = std::log2(dd->size(resTDD.e));
+			gettimeofday(&end, NULL);
+			sizeMeasureTimes.push_back(getMTime(start, end));
+			
+
 			gateTDDs[rightIndex] = resTDD;
 
-			performed.push_back({std::get<0>(nextStep), std::get<1>(nextStep), logSize});
+			if (!graph.doneWithContraction())
+				graph.updateEdgeWeight(std::get<1>(nextStep), logSize);
+				
 			performedStepsToSave.push_back({std::get<0>(nextStep), std::get<1>(nextStep), std::get<2>(nextStep), logSize});
 		}
 		
+		planned.resize(0);
 	}
-	while (lockedWindow.size());
+	while (!graph.doneWithContraction());
 
 
 	json timing;
 	timing["contraction"] = contractionTimes;
 	timing["planning"] = planningTimes;
 	timing["preparation"] = prepTime;
+	timing["sizing"] = sizeMeasureTimes;
 	timing["updatingEdges"] = graph.updateTime;
 	timing["contractionByGraph"] = graph.contractionTime;
 	result_data["time_data"] = timing;
@@ -1948,6 +1950,99 @@ std::tuple<dd::TDD, long> lookAheadContraction(std::string circuit, std::vector<
 	return {graph.edges[lastEdgeIdx].resultingTDD, sum_of_elems};
 }
 
+
+std::tuple<dd::TDD, long> queuePlannedContraction(std::string circuit, std::vector<std::tuple<int, int>> pyEdges, 
+													std::unique_ptr<dd::Package<>>& dd, json& result_data) {
+	// Load in circuit from file
+	std::map<int, gate> gate_set = import_circuit_from_string(circuit);
+	//printf("Successfully imported circuit\n");
+
+	int* nodes = new int[2];
+	nodes[0] = 0;
+	nodes[1] = 0;
+
+	struct timeval start, end;
+	gettimeofday(&start, NULL);
+
+	// Prepare TDD env (var order ...)
+	dd->varOrder = get_var_order();
+	dd->to_test = false;
+
+	std::map<int, std::vector<dd::Index>> Index_set = get_index(gate_set, dd->varOrder);
+	dd::TDD tdd = { dd::Edge<dd::mNode>::one ,{} };
+
+	if (release) {
+		dd->incRef(tdd.e);
+	}
+
+	int node_num_max = 0;
+
+	// Prepare Gate TDDs
+	std::vector<dd::TDD> gateTDDs(gate_set.size());
+	for (int i = 0; i < gateTDDs.size(); i++) {
+		//printf("Gate is: %s\n", gate_set[i].name.c_str());
+		gateTDDs[i] = gateToTDD(gate_set[i].name, Index_set[i], dd);
+	}
+
+	gettimeofday(&end, NULL);
+	auto prepTime = getMTime(start, end);
+
+	
+	std::vector<float> contractionTimes = {};
+	
+	std::vector<std::tuple<int, int, float>> performedSteps = {};
+	for (auto& x : plan_offset) {
+		performedSteps.push_back({x.first, x.first, dd->size(gateTDDs[x.second].e)});
+	}
+
+	// Determine queue plan:
+	gettimeofday(&start, NULL);
+	//printf("Problem with graph\n");
+	QGraph graph = initialiseQGraph(gate_set, Index_set, pyEdges);
+	//printf("Problem with plan\n");
+	
+	auto plan = QueuePlan(graph);
+	//printf("Plan is: \n");
+	//printCurrentQPlan(plan, "QueuePlan");
+
+	gettimeofday(&end, NULL);
+
+	std::vector<float> planningTimes = {getMTime(start, end)};
+
+	// Apply plan
+	int current_step = 1;
+	std::vector<json> jsons(plan.size());
+	for (int k = 0; k < plan.size(); k++) {
+		int leftIndex = plan_offset[std::get<0>(plan[k])];
+		int rightIndex = plan_offset[std::get<1>(plan[k])];
+
+		dd::TDD leftTDD = gateTDDs[leftIndex];
+		dd::TDD rightTDD = gateTDDs[rightIndex];
+
+		gettimeofday(&start, NULL);
+		dd::TDD resTDD = applyTDDs(leftTDD, rightTDD, dd);
+		gettimeofday(&end, NULL);
+		contractionTimes.push_back(getMTime(start, end));
+
+		performedSteps.push_back({std::get<0>(plan[k]), std::get<1>(plan[k]), dd->size(resTDD.e)});
+		gateTDDs[rightIndex] = resTDD;
+	}
+
+	json timing;
+	timing["contraction"] = contractionTimes;
+	timing["planning"] = planningTimes;
+	timing["preparation"] = prepTime;
+	result_data["time_data"] = timing;
+	result_data["executed_plan"] = performedSteps;
+
+	float sum_of_elems = 0.0f;
+	for (auto& n : contractionTimes)
+    	sum_of_elems += n;
+	for (auto& m : planningTimes)
+    	sum_of_elems += m;
+
+	return {gateTDDs[plan_offset[std::get<1>(plan[plan.size() - 1])]], sum_of_elems};
+}
 
 
 dd::TDD plannedContractionOnCircuitFromFile(std::string path, std::vector<std::tuple<int, int>> plan, std::string file_name, std::unique_ptr<dd::Package<>>& dd) {
