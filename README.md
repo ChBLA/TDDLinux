@@ -7,6 +7,7 @@ These are required to compile and run the C++ TDD library file:
 * Pytorch 2.1.0
 * Clang 14.0.0
 * CMake 3.22.1
+* The JSON files from [https://github.com/nlohmann/json/tree/develop/single_include/nlohmann](https://github.com/nlohmann/json/tree/8c391e04fe4195d8be862c97f38cfe10e2a3472e/single_include/nlohmann) in a folder in project root called nlohmann
 
 ### Libtorch CUDA
 ```

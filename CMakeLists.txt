@@ -3,7 +3,7 @@
 #
 option(MAKE_SO "make the so" OFF)
 set(CMAKE_CXX_FLAGS "-Wall")
-
+set(USE_CUDNN 1)
 
 # find_package(Torch REQUIRED)
 # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
@@ -38,6 +38,7 @@ find_package(xtensor REQUIRED)
 include_directories(${XTENSOR_INCLUDE_DIRS})
 
 find_package(Torch REQUIRED)
+find_package(CUDAToolkit)
 #include_directories(${TORCH_INCLUDE_DIRS})
 
 
