@@ -27,7 +27,8 @@ template <class Node> struct Edge {
   Edge copy() {
     Edge copy;
     printf("About to copy TDD edge node\n");
-    copy.p = & ((*p).copy());
+    Node pCopy = (*p).copy();
+    copy.p = &pCopy;
     printf("Done copying TDD edge node\n");
     copy.w = w.copy();
     return copy;

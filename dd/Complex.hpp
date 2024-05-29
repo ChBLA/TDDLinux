@@ -26,8 +26,10 @@ struct Complex {
 
   Complex copy() {
     Complex copy;
-    copy.r = & ((*r).copy());
-    copy.i = & ((*i).copy());
+    CTEntry rCopy = (*r).copy();
+    CTEntry iCopy = (*i).copy();
+    copy.r = &rCopy;
+    copy.i = &iCopy;
     return copy;
   }
 

@@ -240,11 +240,11 @@ public:
 	        gettimeofday(&start, NULL);
             
             edge.resultingTDD = realContract(this->vertices[edge.vertices[0]], this->vertices[edge.vertices[1]]);
-            edge.weight = this->dd->size(edge.resultingTDD.e);
             
             gettimeofday(&end, NULL);
             edge.time = getMTime(start, end);
             
+            edge.weight = this->dd->size(edge.resultingTDD.e);
             this->edges[elemIdx] = edge;
             this->workingQueue.pop();
             this->timeForCurrentStep += edge.time;

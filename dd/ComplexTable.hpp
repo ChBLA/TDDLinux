@@ -30,7 +30,8 @@ public:
     Entry copy() {
       Entry copy;
       copy.value = value;
-      copy.next = &((*next).copy());
+      Entry nextCopy = (*next).copy();
+      copy.next = &nextCopy;
       copy.refCount = refCount;
     }
 
