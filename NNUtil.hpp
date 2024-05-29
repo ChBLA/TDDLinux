@@ -28,7 +28,7 @@ static std::map<std::string, int> gateSizes = {{"cx"s, 6}, {"cz"s, 6}, {"rz"s, 4
 const int maxGateIndex = 13;
 int stepCounter = 0;
 
-torch::Device _device(torch::kCPU);
+torch::Device _device(torch::kCUDA);
 
 vector<std::string> splitString(const std::string& s, const std::string& seperator) {
 	vector<std::string> result;
