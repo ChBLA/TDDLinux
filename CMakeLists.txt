@@ -2,6 +2,7 @@
 # project specific logic here.
 #
 option(MAKE_SO "make the so" OFF)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS "-Wall")
 set(USE_CUDNN 1)
 
@@ -47,7 +48,7 @@ add_subdirectory(parsers)
 add_subdirectory(dd)
 
 target_include_directories(${PROJECT_NAME} PUBLIC ${TORCH_INCLUDE_DIRS})
-target_link_libraries(${PROJECT_NAME} xtl xtensor ${TORCH_LIBRARIES})
+target_link_libraries(${PROJECT_NAME} xtl xtensor ${TORCH_LIBRARIES} pthread)
 
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_17)
 
